@@ -1,29 +1,18 @@
 
-# repository-editor-for-tuf
+# Repository Editor for TUF
 
 ## Overview
 
-## Try it out
+Repository Editor for TUF is a command line tool to edit and maintain a [TUF](https://theupdateframework.io/) repository: the expected use cases are demonstrations, tutorials, testing and small scale repositories in general. It is currently at early stages of development and should be considered experimental and not stable.
 
-### Prerequisites
-
-* Prereq 1
-* Prereq 2
-* Prereq 3
-
-### Build & Run
-
-1. Step 1
-2. Step 2
-3. Step 3
-
-## Documentation
 
 ## Contributing
 
-The repository-editor-for-tuf project team welcomes contributions from the community. Before you start working with repository-editor-for-tuf, please
-read our [Developer Certificate of Origin](https://cla.vmware.com/dco). All contributions to this repository must be
+Contributions are very welcome. Before you start working on changes, please read our 
+[Developer Certificate of Origin](https://cla.vmware.com/dco). All contributions to this repository must be
 signed as described on that page. Your signature certifies that you wrote the patch or have the right to pass it on
 as an open-source patch. For more detailed information, refer to [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
+
+The code is dual-licensed under MIT and Apache 2.0 licenses (for maximum compatibility with TUF project), see LICENSE and LICENSE-MIT.
