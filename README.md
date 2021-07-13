@@ -3,7 +3,7 @@
 
 ## Overview
 
-Repository Editor for TUF is a command line tool to edit and maintain a [TUF](https://theupdateframework.io/) repository: the expected use cases are demonstrations, tutorials, testing and small scale repositories in general. It is currently at early stages of development and should be considered experimental and not stable.
+_Repository Editor for TUF_ is a command line tool to edit and maintain a [TUF](https://theupdateframework.io/) repository: the expected use cases are demonstrations, tutorials, testing and small scale repositories in general. It is currently at early stages of development and should be considered experimental and not stable.
 
 
 ## Contributing
@@ -15,4 +15,4 @@ as an open-source patch. For more detailed information, refer to [CONTRIBUTING.m
 
 ## License
 
-The code is dual-licensed under MIT and Apache 2.0 licenses (for maximum compatibility with TUF project), see LICENSE and LICENSE-MIT.
+The code is dual-licensed under MIT and Apache 2.0 licenses (for maximum compatibility with TUF project), see [LICENSE-MIT](LICENSE-MIT) and [LICENSE](LICENSE).
