@@ -3,8 +3,21 @@
 
 ## Overview
 
-_Repository Editor for TUF_ is a command line tool to edit and maintain a [TUF](https://theupdateframework.io/) repository: the expected use cases are demonstrations, tutorials, testing and small scale repositories in general. It is currently at early stages of development and should be considered experimental and not stable.
+_Repository Editor for TUF_ is a command line tool to edit and maintain a
+[TUF](https://theupdateframework.io/) repository. It is currently at early
+stages of development and should be considered experimental and not stable.
 
+The goals of the project are:
+ * Produce a command line tool for demos, tutorials, testing and and small
+   scale repositories in general. In particular, support use cases of:
+   * Repository maintainer (repository setup, key rotations, delegations)
+   * Timestamp/snapshot automation (hands-free, running on CI)
+   * Target file maintainer (publishing targets)
+ * Function as the repository-side smoke test for TUF Metadata API: Demonstrate
+   that the functionality of the API is sufficient to implement repository
+   tools
+ * Experiment with repository-side functionality, try to identify components
+   that should be implemented as part of the TUF reference implementation
 
 ## Contributing
 
