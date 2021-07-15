@@ -4,27 +4,21 @@
 ## Overview
 
 _Repository Editor for TUF_ project provides a command line tool to edit and
-maintain a [TUF](https://theupdateframework.io/) repository.
-
-The goals of the project are:
+maintain a [TUF](https://theupdateframework.io/) repository. Project aims to:
  * Produce a command line tool for demos, tutorials, testing and and small
    scale repositories in general. In particular, support use cases of:
-   * Repository maintainer (repository setup, key rotations, delegations)
-   * Timestamp/snapshot automation (hands-free, running on CI)
-   * Target file maintainer (publishing targets)
- * Function as the repository-side smoke test for TUF Metadata API: Demonstrate
-   that the functionality of the API is sufficient to implement repository
-   tools
- * Experiment with repository-side functionality, try to identify components
-   that should be implemented as part of the TUF reference implementation
+   * Repository maintainer _(repository setup, key rotations, delegations)_
+   * Timestamp/snapshot automation _(hands-free, running on CI)_
+   * Target file maintainer _(publishing targets)_
+ * Smoke test the TUF Metadata API for repository functionality
 
 ## Status
 
-_Repository Editor for TUF_ works and can be used to create and maintain TUF
-repositories for demo purposes.
+_Repository Editor for TUF_ works already and can be used to create and maintain
+TUF repositories for demo purposes.
 
-However, it is also at early stages of development and should be considered
-experimental:
+It is also at early stages of development and should be considered
+experimental and unstable:
  * User interface is not complete and is likely to change
  * Functionality is still missing (in particular many `add-*` sub-commands
    for edit exist but matching `remove-*` functionality is missing)
@@ -37,9 +31,11 @@ experimental:
     source venv/bin/activate
     pip install -r requirements.txt -e .
 
-    tufctl --help
+    tufrepo --help
 
 ## Examples
+
+Note: The tool outputs very little currently: Running `git diff` once in a while helps keep track of changes so far.
 
 ### Repository initialization
 
@@ -48,24 +44,24 @@ experimental:
     git init .
 
     # Create root metadata
-    tufctl edit root init
+    tufrepo edit root init
 
     # Add keys for top-level roles, put keys in various keyrings
     # (root now gets signed with keys offline1 and offline2)
-    tufctl edit root add-key root offline1
-    tufctl edit root add-key root offline2
-    tufctl edit root set-threshold root 2
-    tufctl edit root add-key snapshot online
-    tufctl edit root add-key timestamp online
-    tufctl edit root add-key targets dev
+    tufrepo edit root add-key root offline1
+    tufrepo edit root add-key root offline2
+    tufrepo edit root set-threshold root 2
+    tufrepo edit root add-key snapshot online
+    tufrepo edit root add-key timestamp online
+    tufrepo edit root add-key targets dev
 
     # Create other top-level metadata (sign with keyrings online or dev)
-    tufctl edit timestamp init
-    tufctl edit snapshot init
-    tufctl edit targets init
+    tufrepo edit timestamp init
+    tufrepo edit snapshot init
+    tufrepo edit targets init
 
     # Update snapshot/timestamp contents (sign with keyring online)
-    tufctl snapshot
+    tufrepo snapshot
 
     git commit -a -m "initial top-level metadata"
 
@@ -73,24 +69,24 @@ experimental:
 ### Delegation
 
     # Add delegation (sign with keyring dev)
-    tufctl edit targets add-delegation --path "files/*" role1
-    tufctl edit targets add-key role1 dev2
+    tufrepo edit targets add-delegation --path "files/*" role1
+    tufrepo edit targets add-key role1 dev2
 
     # Create the delegate targets role (sign with keyring dev2)
-    tufctl edit role1 init
+    tufrepo edit role1 init
 
     # Update snapshot/timestamp contents (sign with keyring online)
-    tufctl snapshot
+    tufrepo snapshot
 
     git commit -a -m "Delegation to role1"
 
-## Target info update example:
+### Target info update example:
 
     # Developer uploads a file (sign with key dev2)
-    tufctl edit role1 add-target files/file1.txt /path/to/file1.txt
+    tufrepo edit role1 add-target files/file1.txt /path/to/file1.txt
 
     # Update snapshot/timestamp contents (sign with key online)
-    tufctl snapshot
+    tufrepo snapshot
 
     git commit -a -m "Add target 'files/file1.txt'"
 
