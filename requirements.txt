@@ -1,0 +1,3 @@
+securesystemslib[crypto]
+git+https://github.com/theupdateframework/tuf.git
+click
