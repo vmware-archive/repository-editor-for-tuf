@@ -24,6 +24,48 @@ experimental and unstable:
    for edit exist but matching `remove-*` functionality is missing)
  * Private key management and target file handling need design
 
+## How it works
+
+### Metadata is stored in git
+
+The tufrepo tool works in a git-stored TUF metadata directory: metadata files
+are automatically added to git. Git is used for a few reasons:
+ * This means the tool needs no state tracking as git knows whether a file
+   has been modified already
+ * Reviewing changes, committing them as logical chunks and reverting wrong
+   changes becomes easy
+ * publishing and sharing repositories (and even running tufrepo on CI)
+   is possible
+
+### Commands are used to edit metadata
+
+The 'edit' command modifies a single metadata file (there are many
+sub-commands, see examples). The 'snapshot' command updates the repository
+snapshot and timestamp. During 'edit' and 'snapshot' commands the tool takes
+care of:
+ * expiry updates
+ * metadata version numbers
+ * file name changes
+ * signing (with all private keys available)
+
+The 'sign' command signs metadata without otherwise modifying it.
+Signing happens automatically during 'edit' and 'snapshot' but sometimes
+all keys are not available at edit time -- in these cases signing without
+modifying the signed content is useful.
+
+The 'status' command verifies repository validity.
+
+### Key management
+
+All of the metadata is stored in git and the git repository is meant to be
+shareable publicly. This means private keys must be stored elsewhere.
+
+Currently tufrepo stores private keys in named "keyrings" in .tufctl
+configuration file in the repo directory (the file is not committed to git).
+This is a preliminary solution and likely to change in the future.
+
+The tool will automatically use the available keys to sign when signing is
+needed.
 
 ## Testing in virtualenv
 
@@ -89,50 +131,6 @@ Note: The tool outputs very little currently: Running `git diff` once in a while
     tufrepo snapshot
 
     git commit -a -m "Add target 'files/file1.txt'"
-
-
-## How it works
-
-### Metadata is stored in git
-
-The tool works in a git-stored TUF metadata directory: metadata files are
-automatically added to git. Git is used for a few reasons:
- * This means the tool needs no state tracking as git knows whether a file
-   has been modified already
- * Reviewing changes, committing them as logical chunks and reverting wrong
-   changes becomes easy
- * publishing and sharing repositories (and even running the tool on CI)
-   is possible
-
-### Commands are used to edit metadata
-
-The 'edit' command modifies a single metadata file (there are many
-sub-commands, see examples). The 'snapshot' command updates the repository
-snapshot and timestamp. During 'edit' and 'snapshot' commands the tool takes
-care of:
- * expiry updates
- * metadata version numbers
- * file name changes
- * signing (with all private keys available)
-
-The 'sign' command signs metadata without otherwise modifying it.
-Signing happens automatically during 'edit' and 'snapshot' but sometimes
-all keys are not available at edit time -- in these cases signing after the
-fact is useful.
-
-The 'status' command verifies repository validity.
-
-### Key management
-
-All of the metadata is stored in git and the git repository is meant to be
-shareable publicly. This means private keys must be stored elsewhere.
-
-Currently tufrepo stores private keys in named "keyrings" in .tufctl
-configuration file (that is not committed to git). This is a preliminary
-solution and likely to change in the future.
-
-The tool will automatically use all available private keys to sign when signing
-is needed.
 
 ## Contributing
 
