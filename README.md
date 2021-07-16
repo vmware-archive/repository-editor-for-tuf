@@ -125,9 +125,11 @@ The 'status' command verifies repository validity.
 ### Key management
 
 All of the metadata is stored in git and the git repository is meant to be
-shareable publicly. This means private keys need to be stored elsewhere.
-Currently available private keys are stored in named "keyrings" in .tufctl
-configuration file: this is likely to change in the future.
+shareable publicly. This means private keys must be stored elsewhere.
+
+Currently tufrepo stores private keys in named "keyrings" in .tufctl
+configuration file (that is not committed to git). This is a preliminary
+solution and likely to change in the future.
 
 The tool will automatically use all available private keys to sign when signing
 is needed.
