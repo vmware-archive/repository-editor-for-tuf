@@ -9,6 +9,8 @@ setup(
     py_modules=['tufrepo'],
     install_requires=[
         'Click',
+        'securesystemslib[pynacl]',
+        'tuf',
     ],
     entry_points={
         'console_scripts': [
