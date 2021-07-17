@@ -41,7 +41,7 @@ from tuf.ngclient import Updater
 logger = logging.getLogger(__name__)
 
 
-class TufCtl:
+class TufRepo:
     def __init__(self):
         try:
             with open(".tufctl", "r") as file:
@@ -109,7 +109,7 @@ class TufCtl:
     def _write_edited_role(
         self, role: str, md: Metadata, period: Optional[int] = None
     ):
-        old_filename = TufCtl._get_filename(role, md.signed.version)
+        old_filename = TufRepo._get_filename(role, md.signed.version)
 
         # only bump version once (if file is unchanged according to git)
         diff_cmd = ["diff", "--exit-code", "--no-patch", "--", old_filename]
@@ -118,11 +118,11 @@ class TufCtl:
 
         # Store expiry period if given
         if period is not None:
-            md.signed.unrecognized_fields["x-tufctl-expiry-period"] = period
+            md.signed.unrecognized_fields["x-tufrepo-expiry-period"] = period
 
         # Update expires
         try:
-            _period = md.signed.unrecognized_fields["x-tufctl-expiry-period"]
+            _period = md.signed.unrecognized_fields["x-tufrepo-expiry-period"]
         except KeyError:
             raise click.ClickException(
                 "Expiry period not found in metadata: use 'set-expiry'"
@@ -133,7 +133,7 @@ class TufCtl:
         md.signatures.clear()
         self._sign_role(role, md)
 
-        new_filename = TufCtl._get_filename(role, md.signed.version)
+        new_filename = self._get_filename(role, md.signed.version)
         md.to_file(new_filename, JSONSerializer())
         if old_filename and new_filename != old_filename and role != "root":
             os.remove(old_filename)
@@ -141,7 +141,7 @@ class TufCtl:
         self._git(["add", "--intent-to-add", new_filename])
 
     def _load_role_for_edit(self, role: str) -> Metadata:
-        return Metadata.from_file(TufCtl._get_filename(role))
+        return Metadata.from_file(self._get_filename(role))
 
     def status(self):
         # TODO should have trusted root somewhere _not_ in git?
@@ -277,7 +277,7 @@ class TufCtl:
             targets_signed = Targets(1, "1.0.19", expiry_date, {}, Delegations({}, []))
             role_md = Metadata(targets_signed, OrderedDict())
 
-        role_md.signed.unrecognized_fields["x-tufctl-expiry-period"] = expiry_period
+        role_md.signed.unrecognized_fields["x-tufrepo-expiry-period"] = expiry_period
 
         self._write_edited_role(role, role_md)
 
@@ -382,10 +382,10 @@ class TufCtl:
 
         logger.info("Added target %s", target_path)
 
-
 @click.group()
+@click.pass_context
 @click.option("-v", "--verbose", count=True)
-def cli(verbose: int = 0):
+def cli(ctx: click.Context, verbose: int = 0):
     """Edit and sign TUF repository metadata
 
     This tool expects to be run in a (git) metadata repository"""
@@ -393,23 +393,28 @@ def cli(verbose: int = 0):
     logging.basicConfig(format="%(levelname)s:%(message)s")
     logger.setLevel(max(1, 10 * (5 - verbose)))
 
+    ctx.obj = TufRepo()
+
 
 @cli.command()
+@click.pass_context
 @click.argument("roles", nargs=-1)
-def sign(roles: Tuple[str]):
+def sign(ctx: click.Context, roles: Tuple[str]):
     """Sign the given roles, using all usable keys in available keyrings"""
-    TufCtl().sign(list(roles))
+    ctx.obj.sign(list(roles))
 
 @cli.command()
-def status():
+@click.pass_context
+def status(ctx: click.Context):
     """"""
-    TufCtl().status()
+    ctx.obj.status()
 
 
 @cli.command()
-def snapshot():
+@click.pass_context
+def snapshot(ctx: click.Context):
     """"""
-    TufCtl().snapshot()
+    ctx.obj.snapshot()
 
 
 @cli.group()
@@ -424,79 +429,79 @@ def edit(role: str):  # pylint: disable=unused-argument
 def touch(ctx: click.Context):
     """Mark ROLE as modified to force a new version"""
     assert ctx.parent
-    TufCtl().touch(ctx.parent.params["role"])
+    ctx.obj.touch(ctx.parent.params["role"])
 
 
 @edit.command()
+@click.pass_context
 @click.option(
     "--expiry",
     help="expiry value and unit",
     default=(1, "days"),
     type=(int, click.Choice(["minutes", "days", "weeks"], case_sensitive=False)),
 )
-@click.pass_context
 def init(ctx: click.Context, expiry: Tuple[int, str]):
     """Create new metadata for ROLE. Example:
 
     tufrepo edit root init --expiry 52 weeks"""
     assert ctx.parent
     delta = timedelta(**{expiry[1]: expiry[0]})
-    TufCtl().init_role(ctx.parent.params["role"], int(delta.total_seconds()))
+    ctx.obj.init_role(ctx.parent.params["role"], int(delta.total_seconds()))
 
 
 @edit.command()
+@click.pass_context
 @click.argument("delegate")
 @click.argument("threshold", type=int)
-@click.pass_context
 def set_threshold(ctx: click.Context, delegate: str, threshold: int):
     """Set the threshold of delegated role DELEGATE."""
     assert ctx.parent
-    TufCtl().set_threshold(ctx.parent.params["role"], delegate, threshold)
+    ctx.obj.set_threshold(ctx.parent.params["role"], delegate, threshold)
 
 
 @edit.command()
+@click.pass_context
 @click.argument(
     "expiry",
     type=(int, click.Choice(["minutes", "days", "weeks"], case_sensitive=False)),
 )
-@click.pass_context
 def set_expiry(ctx: click.Context, expiry: Tuple[int, str]):
     """Set expiry period for the role. Example:
 
     tufrepo edit root set-expiry 52 weeks"""
     assert ctx.parent
     delta = timedelta(**{expiry[1]: expiry[0]})
-    TufCtl().set_expiry(ctx.parent.params["role"], int(delta.total_seconds()))
+    ctx.obj.set_expiry(ctx.parent.params["role"], int(delta.total_seconds()))
 
 
 @edit.command()
+@click.pass_context
 @click.argument("delegate")
 @click.argument("keyring")
-@click.pass_context
 def add_key(ctx: click.Context, delegate: str, keyring: str):
     """Add signing key for delegated role DELEGATE
 
     The private key will be stored in KEYRING."""
     assert ctx.parent
-    TufCtl().add_key(ctx.parent.params["role"], delegate, keyring)
+    ctx.obj.add_key(ctx.parent.params["role"], delegate, keyring)
 
 
 @edit.command()
+@click.pass_context
 @click.argument("target")
 @click.argument("local-file")
-@click.pass_context
 def add_target(ctx: click.Context, target: str, local_file: str):
     """Add a target to a Targets metadata role"""
     assert ctx.parent
-    TufCtl().add_target(ctx.parent.params["role"], target, local_file)
+    ctx.obj.add_target(ctx.parent.params["role"], target, local_file)
 
 
 @edit.command()
+@click.pass_context
 @click.argument("delegate")
 @click.option("--terminating/--non-terminating", default=False)
 @click.option("--path", "paths", multiple=True)
 @click.option("--hash-prefix", "hash_prefixes", multiple=True)
-@click.pass_context
 def add_delegation(
     ctx: click.Context,
     delegate: str,
@@ -508,6 +513,6 @@ def add_delegation(
     assert ctx.parent
     paths_list = list(paths) if paths else None
     hash_prefixes_list = list(hash_prefixes) if hash_prefixes else None
-    TufCtl().add_delegation(
+    ctx.obj.add_delegation(
         ctx.parent.params["role"], delegate, terminating, paths_list, hash_prefixes_list
     )
