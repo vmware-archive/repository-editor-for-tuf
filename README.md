@@ -23,6 +23,7 @@ experimental and unstable:
    for edit exist but matching `remove-*` functionality is missing)
  * There's no "repo init" command yet to handle creating a basic repository
  * Private key management and target file handling need work
+ * Packaging is work-in-progress
 
 ## How it works
 
