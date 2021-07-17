@@ -53,7 +53,7 @@ Signing happens automatically during 'edit' and 'snapshot' but sometimes
 all keys are not available at edit time -- in these cases signing without
 modifying the signed content is useful.
 
-The 'status' command verifies repository validity.
+The 'verify' command verifies repository validity.
 
 ### Key management
 

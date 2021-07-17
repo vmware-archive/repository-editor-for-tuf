@@ -14,6 +14,7 @@ from tempfile import TemporaryDirectory
 from typing import Dict, List, Optional, Tuple
 
 import click
+from click.exceptions import ClickException
 from securesystemslib.hash import digest_fileobject
 from tuf.exceptions import RepositoryError
 from tuf.api.metadata import (
@@ -106,7 +107,7 @@ class TufRepo:
         try:
             _period = md.signed.unrecognized_fields["x-tufrepo-expiry-period"]
         except KeyError:
-            raise click.ClickException(
+            raise ClickException(
                 "Expiry period not found in metadata: use 'set-expiry'"
             )
         md.signed.expires = self._get_expiry(_period)
@@ -125,10 +126,16 @@ class TufRepo:
     def _load_role_for_edit(self, role: str) -> Metadata:
         return Metadata.from_file(self._get_filename(role))
 
-    def status(self):
-        # TODO should have trusted root somewhere _not_ in git?
-        # I guess storing a root file MetaFile with version + hashes
-        # (and storing newer roots as they are seen) would be good enough?
+    def verify(self, root_hash: Optional[str]):
+        if root_hash is not None:
+            # verify initial root is what we expected
+            with open("1.root.json") as initial_root:
+                digest_object = digest_fileobject(initial_root)
+            digest = digest_object.hexdigest()
+            if digest != root_hash:
+                raise ClickException(
+                    f"Unexpected hash digest {digest} for 1.root.json"
+                )
 
         # Do a normal client update to ensure metadata is good
         client_dir = TemporaryDirectory()
@@ -140,7 +147,7 @@ class TufRepo:
         except RepositoryError as e:
             # TODO: improve this message by checking for common mistakes?
             print(e)
-            raise click.ClickException("Top-level metadata fails to validate") from e
+            raise ClickException("Top-level metadata fails to validate") from e
 
         # recursively verify all targets in delegation tree
         # This code is pretty horrible
@@ -155,26 +162,26 @@ class TufRepo:
                 try:
                     metainfo = snapshot.meta[f"{role.name}.json"]
                 except KeyError:
-                    raise click.ClickException(f"Snapshot is invalid: {role.name} not found in snapshot")
+                    raise ClickException(f"Snapshot is invalid: {role.name} not found in snapshot")
                 filename = f"{metainfo.version}.{role.name}.json"
                 try:
                     with open(filename, "rb") as file:
                         role_data = file.read()
                 except FileNotFoundError:
-                    raise click.ClickException(f"Snapshot is invalid: file {filename} not found")
+                    raise ClickException(f"Snapshot is invalid: file {filename} not found")
                 else:
                     logger.debug("Verifying %s", role.name)
                     try:
                         updater._trusted_set.update_delegated_targets(role_data, role.name, delegator_name)
                         delegators.append((role.name, updater._trusted_set[role.name].signed))
                     except RepositoryError as e:
-                        raise click.ClickException("Delegated target fails to validate") from e
+                        raise ClickException("Delegated target fails to validate") from e
 
         # finally make sure no json files exist outside the delegation tree
         for filename in glob.glob("*.*.json"):
             _, role = filename[:-len(".json")].split(".")
             if role not in updater._trusted_set:
-                raise click.ClickException(
+                raise ClickException(
                     f"Delegated target file {filename} is not part of trusted metadata"
                 )
 
@@ -188,7 +195,7 @@ class TufRepo:
 
         This command only updates the meta information in snapshot/timestamp
         according to current files: it does not validate those files in any
-        way. Run 'status' after 'snapshot' to validate repository state.
+        way. Run 'verify' after 'snapshot' to validate repository state.
         """
 
         # Find all Targets metadata in repo...
@@ -235,7 +242,7 @@ class TufRepo:
     def init_role(self, role: str, expiry_period: int):
         filename = self._get_filename(role)
         if os.path.exists(filename):
-            raise click.ClickException(f"Role {role} already exists")
+            raise ClickException(f"Role {role} already exists")
 
         expiry_date = self._get_expiry(expiry_period)
 
@@ -276,7 +283,7 @@ class TufRepo:
             roles = md.signed.delegations.roles
             role = next(role for role in roles if role.name == delegate)
         else:
-            raise click.ClickException(f"{delegator} is not a delegator")
+            raise ClickException(f"{delegator} is not a delegator")
 
         role.threshold = threshold
 
@@ -298,7 +305,7 @@ class TufRepo:
             try:
                 role = next(role for role in roles if role.name == delegate)
             except StopIteration:
-                raise click.ClickException(f"{delegator} does not delegate to {delegate}")
+                raise ClickException(f"{delegator} does not delegate to {delegate}")
             role.keyids.add(key.keyid)
             md.signed.delegations.keys[key.keyid] = key
 
@@ -364,9 +371,10 @@ def sign(ctx: click.Context, roles: Tuple[str]):
 
 @cli.command()
 @click.pass_context
-def status(ctx: click.Context):
+@click.option("--root-hash")
+def verify(ctx: click.Context, root_hash: Optional[str] = None):
     """"""
-    ctx.obj.status()
+    ctx.obj.verify(root_hash)
 
 
 @cli.command()
