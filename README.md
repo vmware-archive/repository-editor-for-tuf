@@ -19,10 +19,10 @@ TUF repositories for demo purposes.
 
 It is also at early stages of development and should be considered
 experimental and unstable:
- * User interface is not complete and is likely to change
  * Functionality is still missing (in particular many `add-*` sub-commands
    for edit exist but matching `remove-*` functionality is missing)
- * Private key management and target file handling need design
+ * There's no "repo init" command yet to handle creating a basic repository
+ * Private key management and target file handling need work
 
 ## How it works
 
@@ -60,12 +60,18 @@ The 'status' command verifies repository validity.
 All of the metadata is stored in git and the git repository is meant to be
 shareable publicly. This means private keys must be stored elsewhere.
 
-Currently tufrepo stores private keys in named "keyrings" in .tufctl
-configuration file in the repo directory (the file is not committed to git).
-This is a preliminary solution and likely to change in the future.
-
-The tool will automatically use the available keys to sign when signing is
+tufrepo can currently read private key secrets from two places
+ * privkeys.json in the repo directory (this does not get committed to git).
+   Encrypted keys are not yet supported.
+ * environment variables. This is useful when running tufrepo on CI and reading
+   the secrets from the CI secrets storage
+The tool will automatically use the available keys to sign whenever signing is
 needed.
+
+tufrepo writes new keys (created during `edit <role> add-key`) to
+privkeys.json.
+
+This key management solution is preliminary and likely to change in the future.
 
 ## Testing in virtualenv
 
@@ -77,32 +83,34 @@ needed.
 
 ## Examples
 
-Note: The tool outputs very little currently: Running `git diff` once in a while helps keep track of changes so far.
+Note: The tool outputs very little currently: Running `git diff` once in a
+while helps keep track of changes so far.
 
 ### Repository initialization
 
     # initialize a git repository for the metadata
     mkdir repo && cd repo
     git init .
+    echo "privkeys.json" > .gitignore
 
     # Create root metadata
     tufrepo edit root init
 
-    # Add keys for top-level roles, put keys in various keyrings
-    # (root now gets signed with keys offline1 and offline2)
-    tufrepo edit root add-key root offline1
-    tufrepo edit root add-key root offline2
+    # Add keys for top-level roles, store private keys in privkeys.json
+    # (root now gets signed with both root keys)
+    tufrepo edit root add-key root
+    tufrepo edit root add-key root
     tufrepo edit root set-threshold root 2
-    tufrepo edit root add-key snapshot online
-    tufrepo edit root add-key timestamp online
-    tufrepo edit root add-key targets dev
+    tufrepo edit root add-key snapshot
+    tufrepo edit root add-key timestamp
+    tufrepo edit root add-key targets
 
-    # Create other top-level metadata (sign with keyrings online or dev)
+    # Create other top-level metadata (signed with timestamp/snapshot/targets keys)
     tufrepo edit timestamp init
     tufrepo edit snapshot init
     tufrepo edit targets init
 
-    # Update snapshot/timestamp contents (sign with keyring online)
+    # Update snapshot/timestamp contents (sign with snapshot/timestamp keys)
     tufrepo snapshot
 
     git commit -a -m "initial top-level metadata"
@@ -110,24 +118,24 @@ Note: The tool outputs very little currently: Running `git diff` once in a while
 
 ### Delegation
 
-    # Add delegation (sign with keyring dev)
+    # Add delegation (sign with targets key)
     tufrepo edit targets add-delegation --path "files/*" role1
-    tufrepo edit targets add-key role1 dev2
+    tufrepo edit targets add-key role1
 
-    # Create the delegate targets role (sign with keyring dev2)
+    # Create the delegate targets role (sign with role1 key)
     tufrepo edit role1 init
 
-    # Update snapshot/timestamp contents (sign with keyring online)
+    # Update snapshot/timestamp contents (sign with snapshot/timestamp keys)
     tufrepo snapshot
 
     git commit -a -m "Delegation to role1"
 
 ### Target info update example:
 
-    # Developer uploads a file (sign with key dev2)
+    # Developer uploads a file (sign with role1 key)
     tufrepo edit role1 add-target files/file1.txt /path/to/file1.txt
 
-    # Update snapshot/timestamp contents (sign with key online)
+    # Update snapshot/timestamp contents (sign with snapshot/timestamp key)
     tufrepo snapshot
 
     git commit -a -m "Add target 'files/file1.txt'"

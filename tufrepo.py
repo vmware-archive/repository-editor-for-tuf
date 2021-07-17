@@ -1,15 +1,12 @@
 # Copyright 2021 VMware, Inc.
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-from filesystem_fetcher import FilesystemFetcher
 import glob
 import io
-import json
 import logging
 import os
 import shutil
 import subprocess
-import sys
 
 from collections import OrderedDict
 from datetime import datetime, timedelta
@@ -17,9 +14,7 @@ from tempfile import TemporaryDirectory
 from typing import Dict, List, Optional, Tuple
 
 import click
-from securesystemslib.keys import generate_ed25519_key
 from securesystemslib.hash import digest_fileobject
-from securesystemslib.signer import SSlibSigner
 from tuf.exceptions import RepositoryError
 from tuf.api.metadata import (
     DelegatedRole,
@@ -35,27 +30,16 @@ from tuf.api.metadata import (
     TargetFile,
 )
 from tuf.api.serialization.json import JSONSerializer
-
 from tuf.ngclient import Updater
+
+from filesystem_fetcher import FilesystemFetcher
+from tufrepokey import Keyring, PrivateKey
 
 logger = logging.getLogger(__name__)
 
-
 class TufRepo:
     def __init__(self):
-        try:
-            with open(".tufctl", "r") as file:
-                logger.debug("Loading .tufctl")
-                self.state = json.load(file)
-        except FileNotFoundError:
-            self.state = {
-                "keyrings": {},
-            }
-
-    def __del__(self):
-        with open(".tufctl", "w") as file:
-            logger.debug("Writing .tufctl")
-            file.write(json.dumps(self.state, indent=1))
+        self.keyring = Keyring()
 
     @staticmethod
     def _get_expiry(expiry_period: int) -> datetime:
@@ -82,16 +66,14 @@ class TufRepo:
             return f"{version}.{role}.json"
 
     def _sign_role(self, role:str, metadata: Metadata):
-        for keyring_name, keyring in self.state["keyrings"].items():
-            if role not in keyring:
-                continue
+        try:
+            for key in self.keyring[role]:
+                keyid = key.public.keyid
+                logger.info("Signing role %s with key %s", role, keyid[:7])
+                metadata.sign(key.signer, append=True)
+        except KeyError:
+            logger.info(f"No keys for role %s found in keyring", role)
 
-            keys = keyring[role]
-            for keyid, keydict in keys.items():
-                logger.info(
-                    "Signing role %s with key %s:%s", role, keyring_name, keyid[:7]
-                )
-                metadata.sign(SSlibSigner(keydict), append=True)
 
     def sign(self, roles: List[str]):
         for role in roles:
@@ -190,16 +172,16 @@ class TufRepo:
 
         # finally make sure no json files exist outside the delegation tree
         for filename in glob.glob("*.*.json"):
-            version, role = filename[:-len(".json")].split(".")
-            try:
-                md = updater._trusted_set[role]
-            except KeyError:
+            _, role = filename[:-len(".json")].split(".")
+            if role not in updater._trusted_set:
                 raise click.ClickException(
                     f"Delegated target file {filename} is not part of trusted metadata"
                 )
 
         deleg_count = len(updater._trusted_set) - 4
+
         print(f"Metadata with {deleg_count} delegated targets verified")
+        print(f"Keyring contains keys for {len(self.keyring)} roles")
 
     def snapshot(self):
         """Update snapshot and timestamp meta information
@@ -304,33 +286,10 @@ class TufRepo:
         md = self._load_role_for_edit(role)
         self._write_edited_role(role, md, expiry_period)
 
-    def add_key(self, delegator: str, delegate: str, keyring_name: str):
+    def add_key(self, delegator: str, delegate: str):
         md = self._load_role_for_edit(delegator)
 
-        # TODO this generates a new one every time, figure out how to use existing keys?
-        keydict = generate_ed25519_key()
-        key = Key(
-            keydict["keyid"],
-            keydict["keytype"],
-            keydict["scheme"],
-            {"public": keydict["keyval"]["public"]},
-        )
-
-        try:
-            keyring = self.state["keyrings"][keyring_name]
-        except KeyError:
-            keyring = self.state["keyrings"][keyring_name] = {}
-
-        if delegate not in keyring:
-            keyring[delegate] = {}
-
-        keyring[delegate][key.keyid] = keydict
-        logger.info(
-            "Added key %s to %s as signer for role %s",
-            key.keyid[:7],
-            keyring_name,
-            delegate,
-        )
+        key = self.keyring.generate_and_store_key(delegate)
 
         if isinstance(md.signed, Root):
             md.signed.add_key(delegate, key)
@@ -477,13 +436,12 @@ def set_expiry(ctx: click.Context, expiry: Tuple[int, str]):
 @edit.command()
 @click.pass_context
 @click.argument("delegate")
-@click.argument("keyring")
-def add_key(ctx: click.Context, delegate: str, keyring: str):
-    """Add signing key for delegated role DELEGATE
+def add_key(ctx: click.Context, delegate: str):
+    """Add new signing key for delegated role DELEGATE
 
-    The private key will be stored in KEYRING."""
+    The private key secret will be written to privkeys.json."""
     assert ctx.parent
-    ctx.obj.add_key(ctx.parent.params["role"], delegate, keyring)
+    ctx.obj.add_key(ctx.parent.params["role"], delegate)
 
 
 @edit.command()
