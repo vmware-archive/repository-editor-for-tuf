@@ -312,8 +312,35 @@ class TufRepo:
                 raise ClickException(f"{delegator} does not delegate to {delegate}")
             role.keyids.add(key.keyid)
             md.signed.delegations.keys[key.keyid] = key
+        else:
+            raise ClickException(f"{delegator} is not delegating metadata")
 
         self._write_edited_role(delegator, md)
+
+    def remove_key(self, delegator: str, delegate: str, keyid: str):
+        md = self._load_role_for_edit(delegator)
+
+        if isinstance(md.signed, Root):
+            md.signed.remove_key(delegate, keyid)
+        elif isinstance(md.signed, Targets):
+            try:
+                roles = md.signed.delegations.roles
+                role = next(role for role in roles if role.name == delegate)
+            except (StopIteration, AttributeError):
+                raise ClickException(f"{delegator} does not delegate to {delegate}")
+            role.keyids.remove(keyid)
+            key_in_use = False
+            for role in roles:
+                if keyid in role.keyids:
+                    key_in_use = True
+                    break
+            if not key_in_use:
+                del md.signed.delegations.keys[keyid]
+        else:
+            raise ClickException(f"{delegator} is not delegating metadata")
+
+        self._write_edited_role(delegator, md)
+        print(f"Removed {delegate} key {keyid[:7]} from {delegator}")
 
     def add_delegation(
         self,
@@ -457,6 +484,15 @@ def add_key(ctx: click.Context, delegate: str):
     The private key secret will be written to privkeys.json."""
     assert ctx.parent
     ctx.obj.add_key(ctx.parent.params["role"], delegate)
+
+@edit.command()
+@click.pass_context
+@click.argument("delegate")
+@click.argument("keyid")
+def remove_key(ctx: click.Context, delegate: str, keyid: str):
+    """Remove signing key from delegated role DELEGATE"""
+    assert ctx.parent
+    ctx.obj.remove_key(ctx.parent.params["role"], delegate, keyid)
 
 
 @edit.command()
