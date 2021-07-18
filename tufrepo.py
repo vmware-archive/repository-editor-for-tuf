@@ -38,6 +38,7 @@ from tufrepokey import Keyring, PrivateKey
 
 logger = logging.getLogger(__name__)
 
+
 class TufRepo:
     def __init__(self):
         self.keyring = Keyring()
@@ -66,7 +67,7 @@ class TufRepo:
 
             return f"{version}.{role}.json"
 
-    def _sign_role(self, role:str, metadata: Metadata):
+    def _sign_role(self, role: str, metadata: Metadata):
         try:
             for key in self.keyring[role]:
                 keyid = key.public.keyid
@@ -74,7 +75,6 @@ class TufRepo:
                 metadata.sign(key.signer, append=True)
         except KeyError:
             logger.info(f"No keys for role %s found in keyring", role)
-
 
     def sign(self, roles: List[str]):
         for role in roles:
@@ -89,14 +89,12 @@ class TufRepo:
         proc = subprocess.run(full_cmd)
         return proc.returncode
 
-    def _write_edited_role(
-        self, role: str, md: Metadata, period: Optional[int] = None
-    ):
+    def _write_edited_role(self, role: str, md: Metadata, period: Optional[int] = None):
         old_filename = TufRepo._get_filename(role, md.signed.version)
 
         # only bump version once (if file is unchanged according to git)
         diff_cmd = ["diff", "--exit-code", "--no-patch", "--", old_filename]
-        if  os.path.exists(old_filename) and self._git(diff_cmd) == 0:
+        if os.path.exists(old_filename) and self._git(diff_cmd) == 0:
             md.signed.version += 1
 
         # Store expiry period if given
@@ -133,16 +131,19 @@ class TufRepo:
                 digest_object = digest_fileobject(initial_root)
             digest = digest_object.hexdigest()
             if digest != root_hash:
-                raise ClickException(
-                    f"Unexpected hash digest {digest} for 1.root.json"
-                )
+                raise ClickException(f"Unexpected hash digest {digest} for 1.root.json")
 
         # Do a normal client update to ensure metadata is good
         client_dir = TemporaryDirectory()
         shutil.copy("1.root.json", f"{client_dir.name}/root.json")
         fsfetcher = FilesystemFetcher({"http://localhost/fakeurl/": "."})
         try:
-            updater = Updater(client_dir.name, "http://localhost/fakeurl/", "http://localhost/fakeurl/", fsfetcher)
+            updater = Updater(
+                client_dir.name,
+                "http://localhost/fakeurl/",
+                "http://localhost/fakeurl/",
+                fsfetcher,
+            )
             updater.refresh()
         except RepositoryError as e:
             # TODO: improve this message by checking for common mistakes?
@@ -151,8 +152,10 @@ class TufRepo:
 
         # recursively verify all targets in delegation tree
         # This code is pretty horrible
-        snapshot:Snapshot = updater._trusted_set.snapshot.signed
-        delegators:List[Tuple[str, Targets]]=[("targets", updater._trusted_set["targets"].signed)]
+        snapshot: Snapshot = updater._trusted_set.snapshot.signed
+        delegators: List[Tuple[str, Targets]] = [
+            ("targets", updater._trusted_set["targets"].signed)
+        ]
         while delegators:
             delegator_name, delegator = delegators.pop(0)
             if delegator.delegations is None:
@@ -162,24 +165,34 @@ class TufRepo:
                 try:
                     metainfo = snapshot.meta[f"{role.name}.json"]
                 except KeyError:
-                    raise ClickException(f"Snapshot is invalid: {role.name} not found in snapshot")
+                    raise ClickException(
+                        f"Snapshot is invalid: {role.name} not found in snapshot"
+                    )
                 filename = f"{metainfo.version}.{role.name}.json"
                 try:
                     with open(filename, "rb") as file:
                         role_data = file.read()
                 except FileNotFoundError:
-                    raise ClickException(f"Snapshot is invalid: file {filename} not found")
+                    raise ClickException(
+                        f"Snapshot is invalid: file {filename} not found"
+                    )
                 else:
                     logger.debug("Verifying %s", role.name)
                     try:
-                        updater._trusted_set.update_delegated_targets(role_data, role.name, delegator_name)
-                        delegators.append((role.name, updater._trusted_set[role.name].signed))
+                        updater._trusted_set.update_delegated_targets(
+                            role_data, role.name, delegator_name
+                        )
+                        delegators.append(
+                            (role.name, updater._trusted_set[role.name].signed)
+                        )
                     except RepositoryError as e:
-                        raise ClickException("Delegated target fails to validate") from e
+                        raise ClickException(
+                            "Delegated target fails to validate"
+                        ) from e
 
         # finally make sure no json files exist outside the delegation tree
         for filename in glob.glob("*.*.json"):
-            _, role = filename[:-len(".json")].split(".")
+            _, role = filename[: -len(".json")].split(".")
             if role not in updater._trusted_set:
                 raise ClickException(
                     f"Delegated target file {filename} is not part of trusted metadata"
@@ -201,39 +214,33 @@ class TufRepo:
         # Find all Targets metadata in repo...
         targets = {}
         for filename in glob.glob("*.*.json"):
-            version, role = filename[:-len(".json")].split(".")
+            version, role = filename[: -len(".json")].split(".")
             if role not in ["root", "snapshot", "timestamp"]:
                 targets[f"{role}.json"] = int(version)
 
         # Snapshot update needed?
         update_needed = False
         snapshot_md = self._load_role_for_edit("snapshot")
-        snapshot:Snapshot = snapshot_md.signed
+        snapshot: Snapshot = snapshot_md.signed
         if len(snapshot.meta) != len(targets):
             update_needed = True
         else:
             for fname, metainfo in snapshot.meta.items():
                 if fname not in targets or metainfo.version != targets[fname]:
                     update_needed = True
-        
+
         if update_needed:
-            logger.info(
-                f"Updating Snapshot with {len(targets)} targets metadata"
-            )
-            snapshot.meta = {
-                f"{name}":MetaFile(ver) for name, ver in targets.items()
-            }
+            logger.info(f"Updating Snapshot with {len(targets)} targets metadata")
+            snapshot.meta = {f"{name}": MetaFile(ver) for name, ver in targets.items()}
             self._write_edited_role("snapshot", snapshot_md)
         else:
             logger.info("Snapshot is already up-to-date")
 
         # Timestamp update needed?
         timestamp_md = self._load_role_for_edit("timestamp")
-        timestamp:Timestamp = timestamp_md.signed
+        timestamp: Timestamp = timestamp_md.signed
         if timestamp.meta["snapshot.json"].version != snapshot.version:
-            logger.info(
-                f"Updating Timestamp with snapshot version {snapshot.version}"
-            )
+            logger.info(f"Updating Timestamp with snapshot version {snapshot.version}")
             timestamp.update(MetaFile(snapshot.version))
             self._write_edited_role("timestamp", timestamp_md)
         else:
@@ -356,7 +363,7 @@ class TufRepo:
         role = DelegatedRole(delegate, [], 1, terminating, paths, hash_prefixes)
 
         if targets.delegations is None:
-            targets.delegations = Delegations({},[])
+            targets.delegations = Delegations({}, [])
         # TODO delegations needs an api for this -- or roles needs to be a ordereddict
         # this is buggy and does not support ordering in any way
         targets.delegations.roles.append(role)
@@ -382,6 +389,7 @@ class TufRepo:
 
         logger.info("Added target %s", target_path)
 
+
 @click.group()
 @click.pass_context
 @click.option("-v", "--verbose", count=True)
@@ -403,6 +411,7 @@ def sign(ctx: click.Context, roles: Tuple[str]):
     """Sign the given roles, using all usable keys in available keyrings"""
     ctx.obj.sign(list(roles))
 
+
 @cli.command()
 @click.pass_context
 @click.option("--root-hash")
@@ -422,7 +431,6 @@ def snapshot(ctx: click.Context):
 @click.argument("role")
 def edit(role: str):  # pylint: disable=unused-argument
     """Edit metadata for ROLE using the sub-commands."""
-    pass
 
 
 @edit.command()
@@ -484,6 +492,7 @@ def add_key(ctx: click.Context, delegate: str):
     The private key secret will be written to privkeys.json."""
     assert ctx.parent
     ctx.obj.add_key(ctx.parent.params["role"], delegate)
+
 
 @edit.command()
 @click.pass_context
