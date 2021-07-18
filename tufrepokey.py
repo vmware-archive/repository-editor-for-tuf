@@ -66,6 +66,8 @@ class Keyring(Dict[str, Set[PrivateKey]]):
                     for keyid in role.keyids:
                         role_keys[rolename].append(md.signed.keys[keyid])
             elif isinstance(md.signed, Targets):
+                if md.signed.delegations is None:
+                    continue
                 for role in md.signed.delegations.roles:
                     if role.name not in role_keys:
                         role_keys[role.name] = []

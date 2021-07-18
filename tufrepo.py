@@ -263,7 +263,7 @@ class TufRepo:
             snapshot_signed = Snapshot(1, "1.0.19", expiry_date, {})
             role_md = Metadata(snapshot_signed, OrderedDict())
         else:
-            targets_signed = Targets(1, "1.0.19", expiry_date, {}, Delegations({}, []))
+            targets_signed = Targets(1, "1.0.19", expiry_date, {}, None)
             role_md = Metadata(targets_signed, OrderedDict())
 
         role_md.signed.unrecognized_fields["x-tufrepo-expiry-period"] = expiry_period
@@ -277,14 +277,18 @@ class TufRepo:
     def set_threshold(self, delegator: str, delegate: str, threshold: int):
         md = self._load_role_for_edit(delegator)
 
+        role = None
         if isinstance(md.signed, Root):
-            role = md.signed.roles[delegate]
+            role = md.signed.roles.get(delegate)
         elif isinstance(md.signed, Targets):
-            roles = md.signed.delegations.roles
-            role = next(role for role in roles if role.name == delegate)
+            if md.signed.delegations is not None:
+                roles = md.signed.delegations.roles
+                role = next((r for r in roles if r.name == delegate), None)
         else:
             raise ClickException(f"{delegator} is not a delegator")
 
+        if role is None:
+            raise ClickException(f"Role {delegate} not found")
         role.threshold = threshold
 
         self._write_edited_role(delegator, md)
@@ -301,10 +305,10 @@ class TufRepo:
         if isinstance(md.signed, Root):
             md.signed.add_key(delegate, key)
         elif isinstance(md.signed, Targets):
-            roles = md.signed.delegations.roles
             try:
+                roles = md.signed.delegations.roles
                 role = next(role for role in roles if role.name == delegate)
-            except StopIteration:
+            except (StopIteration, AttributeError):
                 raise ClickException(f"{delegator} does not delegate to {delegate}")
             role.keyids.add(key.keyid)
             md.signed.delegations.keys[key.keyid] = key
@@ -323,6 +327,9 @@ class TufRepo:
         targets: Targets = md.signed
 
         role = DelegatedRole(delegate, [], 1, terminating, paths, hash_prefixes)
+
+        if targets.delegations is None:
+            targets.delegations = Delegations({},[])
         # TODO delegations needs an api for this -- or roles needs to be a ordereddict
         # this is buggy and does not support ordering in any way
         targets.delegations.roles.append(role)
