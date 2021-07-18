@@ -18,12 +18,6 @@ from typing import Any, Dict, List, Set
 
 logger = logging.getLogger(__name__)
 
-# TODO keys:
-# * CLI should construct Keyring
-# * on add_key, CLI should first add the key to keyring...
-# * TufCtl init should take the keyring, store it
-# * when files are written, keyring gets used
-
 class PrivateKey:
     def __init__(self, key: Key, private: str) -> None:
         self.public = key
@@ -44,13 +38,13 @@ class PrivateKey:
 class Keyring(Dict[str, Set[PrivateKey]]):
     """"Private key management for a repository
 
-    Private keys are loaded for all found secrets in
+    On Keyring initialization private keys are loaded for all found secrets in
       * env variables (TUF_REPO_PRIVATE_KEY_*) and
       * privkeys.json file
     if they match a delegation keyid in the repository
 
-    Private key secrets are only written to disk when
-    generate_and_store_key() is called
+    Private key secrets are only written to disk when generate_and_store_key()
+    is called.
     """
 
     def __init__(self) -> None:
@@ -89,12 +83,9 @@ class Keyring(Dict[str, Set[PrivateKey]]):
         for rolename, keys in role_keys.items():
             role_priv_keys = set()
             for key in keys:
-                # private key in environment variable?
-                private = os.getenv(f"TUF_REPO_PRIVATE_KEY_{key.keyid}")
-                if not private:
-                    # private key in keyfile?
-                    private = privkeyfile.get(key.keyid)
-
+                # Get private key from env variable or privkeys.json
+                env_var = f"TUF_REPO_PRIVATE_KEY_{key.keyid}"
+                private = os.getenv(env_var) or privkeyfile.get(key.keyid)
                 if private:
                     role_priv_keys.add(PrivateKey(key, private))
 
@@ -104,6 +95,7 @@ class Keyring(Dict[str, Set[PrivateKey]]):
         logger.info("Loaded keyring with keys for %d roles", len(self))
 
     def generate_and_store_key(self, role: str) -> Key:
+        "Generate a key. Return public key, write private key to privkeys.json"
         keydict = generate_ed25519_key()
         del keydict["keyid_hash_algorithms"]
         private = keydict["keyval"].pop("private")

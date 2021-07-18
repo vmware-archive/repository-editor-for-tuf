@@ -188,7 +188,7 @@ class TufRepo:
         deleg_count = len(updater._trusted_set) - 4
 
         print(f"Metadata with {deleg_count} delegated targets verified")
-        print(f"Keyring contains keys for {len(self.keyring)} roles")
+        print(f"Keyring contains keys for [{', '.join(self.keyring.keys())}].")
 
     def snapshot(self):
         """Update snapshot and timestamp meta information
