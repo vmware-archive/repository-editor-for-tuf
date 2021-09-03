@@ -30,7 +30,7 @@ class FilesystemFetcher(FetcherInterface):
     def __init__(self, remote_dirs: Dict[str, str]):
         self.remote_dirs: Dict[str, str] = remote_dirs
 
-    def fetch(self, url:str, required_length):
+    def fetch(self, url:str):
         for url_prefix, dir in self.remote_dirs.items():
             if url.startswith(url_prefix):
                 try:
