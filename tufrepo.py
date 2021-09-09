@@ -380,10 +380,8 @@ class TufRepo:
             digest = digest_object.hexdigest()
             file.seek(0, io.SEEK_END)
             length = file.tell()
-        targetfile = TargetFile(length, {"sha256": digest})
-
-        targets: Targets = targets_md.signed
-        targets.update(target_path, targetfile)
+        targetfile = TargetFile(length, {"sha256": digest}, target_path)
+        targets_md.signed.targets[targetfile.pathpath] = targetfile
 
         self._write_edited_role(role, targets_md)
 
