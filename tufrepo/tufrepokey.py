@@ -77,6 +77,8 @@ class Keyring(Dict[str, Set[PrivateKey]]):
         try:
             with open("privkeys.json", "r") as f:
                 privkeyfile: Dict[str, str] = json.loads(f.read())
+        except json.JSONDecodeError as e:
+            raise RuntimeError("Failed to read privkeys.json")
         except FileNotFoundError:
             privkeyfile = {}
         

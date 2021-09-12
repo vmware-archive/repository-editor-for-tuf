@@ -6,7 +6,7 @@ from setuptools import setup
 setup(
     name='tufrepo',
     version='0.1.0',
-    py_modules=['tufrepo', 'tufrepokey', 'filesystem_fetcher'],
+    packages=['tufrepo'],
     install_requires=[
         'Click',
         'securesystemslib[pynacl]',
@@ -14,7 +14,7 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            'tufrepo = tufrepo:cli',
+            'tufrepo = tufrepo.cli:cli',
         ],
     },
 )
