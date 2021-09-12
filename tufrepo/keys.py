@@ -14,7 +14,7 @@ from tuf.api.metadata import (
     Root,
     Targets,
 )
-from typing import Any, Dict, List, Set
+from typing import Dict, List, Set
 
 logger = logging.getLogger(__name__)
 
@@ -101,17 +101,20 @@ class Keyring(Dict[str, Set[PrivateKey]]):
 
         logger.info("Loaded keyring with keys for %d roles", len(self))
 
-    def generate_and_store_key(self, role: str) -> Key:
-        "Generate a key. Return public key, write private key to privkeys.json"
+    def generate_key(self) -> PrivateKey:
+        "Generate a private key"
         keydict = generate_ed25519_key()
         del keydict["keyid_hash_algorithms"]
         private = keydict["keyval"].pop("private")
-        privkey = PrivateKey(Key.from_dict(keydict["keyid"], keydict), private)
+        return PrivateKey(Key.from_dict(keydict["keyid"], keydict), private)
+
+    def store_key(self, role: str, key: PrivateKey) -> None:
+        "Write private key to privkeys.json"
 
         # Add new key to keyring
         if role not in self:
             self[role] = set()
-        self[role].add(privkey)
+        self[role].add(key)
 
         # write private key to privkeys file
         try:
@@ -119,14 +122,12 @@ class Keyring(Dict[str, Set[PrivateKey]]):
                 privkeyfile: Dict[str, str] = json.loads(f.read())
         except FileNotFoundError:
             privkeyfile = {}
-        privkeyfile[privkey.public.keyid] = privkey.private
+        privkeyfile[key.public.keyid] = key.private
         with open("privkeys.json", "w") as f:
             f.write(json.dumps(privkeyfile, indent=2))
 
         logger.info(
             "Added key %s for role %s to keyring",
-            privkey.public.keyid[:7],
+            key.public.keyid[:7],
             role,
         )
-
-        return privkey.public

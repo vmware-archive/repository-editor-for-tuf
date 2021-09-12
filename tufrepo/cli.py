@@ -7,6 +7,7 @@ from datetime import timedelta
 from typing import Optional, Tuple
 
 from tufrepo.repo import Repo
+from tufrepo.keys import Keyring
 
 logger = logging.getLogger(__name__)
 
@@ -22,14 +23,14 @@ def cli(ctx: click.Context, verbose: int = 0):
     logging.basicConfig(format="%(levelname)s:%(message)s")
     logger.setLevel(max(1, 10 * (5 - verbose)))
 
-    ctx.obj = Repo()
+    ctx.obj = Repo(Keyring())
 
 
 @cli.command()
 @click.pass_context
 @click.argument("roles", nargs=-1)
 def sign(ctx: click.Context, roles: Tuple[str]):
-    """Sign the given roles, using all usable keys in available keyrings"""
+    """Sign the given roles, using all usable keys in keyring"""
     repo: Repo = ctx.obj
     repo.sign(list(roles))
 

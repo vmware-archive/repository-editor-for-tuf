@@ -40,8 +40,8 @@ logger = logging.getLogger(__name__)
 
 
 class Repo:
-    def __init__(self):
-        self.keyring = Keyring()
+    def __init__(self, keyring: Keyring):
+        self.keyring = keyring
 
     @staticmethod
     def _get_expiry(expiry_period: int) -> datetime:
@@ -306,23 +306,24 @@ class Repo:
 
     def add_key(self, delegator: str, delegate: str):
         md = self._load_role_for_edit(delegator)
-
-        key = self.keyring.generate_and_store_key(delegate)
+        key = self.keyring.generate_key()
 
         if isinstance(md.signed, Root):
-            md.signed.add_key(delegate, key)
+            md.signed.add_key(delegate, key.public)
         elif isinstance(md.signed, Targets):
             try:
                 roles = md.signed.delegations.roles
                 role = next(role for role in roles if role.name == delegate)
             except (StopIteration, AttributeError):
                 raise ClickException(f"{delegator} does not delegate to {delegate}")
-            role.keyids.add(key.keyid)
-            md.signed.delegations.keys[key.keyid] = key
+            role.keyids.add(key.public.keyid)
+            md.signed.delegations.keys[key.public.keyid] = key.public
         else:
             raise ClickException(f"{delegator} is not delegating metadata")
 
         self._write_edited_role(delegator, md)
+
+        self.keyring.store_key(key)
 
     def remove_key(self, delegator: str, delegate: str, keyid: str):
         md = self._load_role_for_edit(delegator)
