@@ -1,6 +1,8 @@
 # Copyright 2021 VMware, Inc.
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+# Experimental verification code, not used anywhere yet
+
 # Verify as a whole should recognize at least these different cases:
 # 1. Expired timestamp
 #    * Root is valid
