@@ -11,11 +11,14 @@ from tufrepo.keys import Keyring
 
 logger = logging.getLogger(__name__)
 
+def get_role(ctx: click.Context) -> str:
+    """Return parent commands 'role' parameter"""
+    assert ctx.parent
+    return ctx.parent.params["role"]
 
 @click.group()
-@click.pass_context
 @click.option("-v", "--verbose", count=True)
-def cli(ctx: click.Context, verbose: int = 0):
+def cli(verbose: int = 0):
     """Edit and sign TUF repository metadata
 
     This tool expects to be run in a (git) metadata repository"""
@@ -23,32 +26,27 @@ def cli(ctx: click.Context, verbose: int = 0):
     logging.basicConfig(format="%(levelname)s:%(message)s")
     logger.setLevel(max(1, 10 * (5 - verbose)))
 
-    ctx.obj = Repo(Keyring())
-
 
 @cli.command()
-@click.pass_context
 @click.argument("roles", nargs=-1)
-def sign(ctx: click.Context, roles: Tuple[str]):
+def sign(roles: Tuple[str]):
     """Sign the given roles, using all usable keys in keyring"""
-    repo: Repo = ctx.obj
+    repo = Repo(Keyring())
     repo.sign(list(roles))
 
 
 @cli.command()
-@click.pass_context
 @click.option("--root-hash")
-def verify(ctx: click.Context, root_hash: Optional[str] = None):
+def verify(root_hash: Optional[str] = None):
     """"""
-    repo: Repo = ctx.obj
+    repo = Repo(Keyring())
     repo.verify(root_hash)
 
 
 @cli.command()
-@click.pass_context
-def snapshot(ctx: click.Context):
+def snapshot():
     """"""
-    repo: Repo = ctx.obj
+    repo = Repo(Keyring())
     repo.snapshot()
 
 
@@ -62,9 +60,8 @@ def edit(role: str):  # pylint: disable=unused-argument
 @click.pass_context
 def touch(ctx: click.Context):
     """Mark ROLE as modified to force a new version"""
-    assert ctx.parent
-    repo: Repo = ctx.obj
-    repo.touch(ctx.parent.params["role"])
+    repo = Repo(Keyring())
+    repo.touch(get_role(ctx))
 
 
 @edit.command()
@@ -79,10 +76,9 @@ def init(ctx: click.Context, expiry: Tuple[int, str]):
     """Create new metadata for ROLE. Example:
 
     tufrepo edit root init --expiry 52 weeks"""
-    assert ctx.parent
-    repo: Repo = ctx.obj
+    repo = Repo(Keyring())
     delta = timedelta(**{expiry[1]: expiry[0]})
-    repo.init_role(ctx.parent.params["role"], int(delta.total_seconds()))
+    repo.init_role(get_role(ctx), int(delta.total_seconds()))
 
 
 @edit.command()
@@ -91,9 +87,8 @@ def init(ctx: click.Context, expiry: Tuple[int, str]):
 @click.argument("threshold", type=int)
 def set_threshold(ctx: click.Context, delegate: str, threshold: int):
     """Set the threshold of delegated role DELEGATE."""
-    assert ctx.parent
-    repo: Repo = ctx.obj
-    repo.set_threshold(ctx.parent.params["role"], delegate, threshold)
+    repo = Repo(Keyring())
+    repo.set_threshold(get_role(ctx), delegate, threshold)
 
 
 @edit.command()
@@ -106,10 +101,9 @@ def set_expiry(ctx: click.Context, expiry: Tuple[int, str]):
     """Set expiry period for the role. Example:
 
     tufrepo edit root set-expiry 52 weeks"""
-    assert ctx.parent
-    repo: Repo = ctx.obj
+    repo = Repo(Keyring())
     delta = timedelta(**{expiry[1]: expiry[0]})
-    repo.set_expiry(ctx.parent.params["role"], int(delta.total_seconds()))
+    repo.set_expiry(get_role(ctx), int(delta.total_seconds()))
 
 
 @edit.command()
@@ -119,9 +113,8 @@ def add_key(ctx: click.Context, delegate: str):
     """Add new signing key for delegated role DELEGATE
 
     The private key secret will be written to privkeys.json."""
-    assert ctx.parent
-    repo: Repo = ctx.obj
-    repo.add_key(ctx.parent.params["role"], delegate)
+    repo = Repo(Keyring())
+    repo.add_key(get_role(ctx), delegate)
 
 
 @edit.command()
@@ -130,9 +123,8 @@ def add_key(ctx: click.Context, delegate: str):
 @click.argument("keyid")
 def remove_key(ctx: click.Context, delegate: str, keyid: str):
     """Remove signing key from delegated role DELEGATE"""
-    assert ctx.parent
-    repo: Repo = ctx.obj
-    repo.remove_key(ctx.parent.params["role"], delegate, keyid)
+    repo = Repo(Keyring())
+    repo.remove_key(get_role(ctx), delegate, keyid)
 
 
 @edit.command()
@@ -141,9 +133,8 @@ def remove_key(ctx: click.Context, delegate: str, keyid: str):
 @click.argument("local-file")
 def add_target(ctx: click.Context, target: str, local_file: str):
     """Add a target to a Targets metadata role"""
-    assert ctx.parent
-    repo: Repo = ctx.obj
-    repo.add_target(ctx.parent.params["role"], target, local_file)
+    repo = Repo(Keyring())
+    repo.add_target(get_role(ctx), target, local_file)
 
 
 @edit.command()
@@ -160,10 +151,8 @@ def add_delegation(
     hash_prefixes: Tuple[str],
 ):
     """Delegate from ROLE to DELEGATE"""
-    assert ctx.parent
-    repo: Repo = ctx.obj
+    repo = Repo(Keyring())
+    role = get_role(ctx)
     paths_list = list(paths) if paths else None
-    hash_prefixes_list = list(hash_prefixes) if hash_prefixes else None
-    repo.add_delegation(
-        ctx.parent.params["role"], delegate, terminating, paths_list, hash_prefixes_list
-    )
+    prefix_list = list(hash_prefixes) if hash_prefixes else None
+    repo.add_delegation(role, delegate, terminating, paths_list, prefix_list)
