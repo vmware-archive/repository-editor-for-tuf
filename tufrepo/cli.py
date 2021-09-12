@@ -10,6 +10,7 @@ from tufrepo.repo import Repo
 
 logger = logging.getLogger(__name__)
 
+
 @click.group()
 @click.pass_context
 @click.option("-v", "--verbose", count=True)

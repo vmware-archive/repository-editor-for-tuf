@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Set
 
 logger = logging.getLogger(__name__)
 
+
 class PrivateKey:
     def __init__(self, key: Key, private: str) -> None:
         self.public = key
@@ -26,7 +27,7 @@ class PrivateKey:
         keydict = copy.deepcopy(self.public.to_securesystemslib_key())
         keydict["keyval"]["private"] = private
         self.signer = SSlibSigner(keydict)
-        
+
     def __hash__(self):
         return hash(self.public.keyid)
 
@@ -35,8 +36,9 @@ class PrivateKey:
             return self.public.keyid == other.public.keyid
         return NotImplemented
 
+
 class Keyring(Dict[str, Set[PrivateKey]]):
-    """"Private key management for a repository
+    """ "Private key management for a repository
 
     On Keyring initialization private keys are loaded for all found secrets in
       * env variables (TUF_REPO_PRIVATE_KEY_*) and
@@ -51,9 +53,11 @@ class Keyring(Dict[str, Set[PrivateKey]]):
         # find all delegating roles in the repository
         roles: Dict[str, int] = {}
         for filename in glob.glob("*.*.json"):
-            version, delegating_role = filename[:-len(".json")].split(".")
+            ver_str, delegating_role = filename[: -len(".json")].split(".")
             if delegating_role not in ["timestamp", "snapshot"]:
-                roles[delegating_role] = max(int(version), roles.get(delegating_role, 0))
+                roles[delegating_role] = max(
+                    int(ver_str), roles.get(delegating_role, 0)
+                )
 
         # find all signing keys for all roles
         role_keys: Dict[str, List[Key]] = {}
@@ -81,8 +85,7 @@ class Keyring(Dict[str, Set[PrivateKey]]):
             raise RuntimeError("Failed to read privkeys.json")
         except FileNotFoundError:
             privkeyfile = {}
-        
-    
+
         # figure out which keys we have private keys for, store in keyring
         for rolename, keys in role_keys.items():
             role_priv_keys = set()
@@ -95,7 +98,7 @@ class Keyring(Dict[str, Set[PrivateKey]]):
 
             if role_priv_keys:
                 self[rolename] = role_priv_keys
-    
+
         logger.info("Loaded keyring with keys for %d roles", len(self))
 
     def generate_and_store_key(self, role: str) -> Key:

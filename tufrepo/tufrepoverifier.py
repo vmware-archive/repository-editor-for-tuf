@@ -21,7 +21,7 @@
 #    * snapshot contains a metadata and file does not exist
 # 5. Default case
 #    * Delegation tree is valid (WRT client update workflow)
-#    * All files are in snapshot, only one 
+#    * All files are in snapshot, only one
 #    -> All good?
 
 from typing import Dict, List, Optional, Tuple
@@ -30,8 +30,9 @@ from securesystemslib.hash import digest_fileobject
 from tuf.api.metadata import Snapshot, Targets
 from tuf.ngclient._internal.trusted_metadata_set import TrustedMetadataSet
 
+
 class Verifier:
-    def _track_role_version (self, role: str, version: int):
+    def _track_role_version(self, role: str, version: int):
         md = self._trusted_set[role]
         if version != md.signed.version:
             raise Exception(f"Expected {role} {version} but got {md.signed.version}")
@@ -43,7 +44,7 @@ class Verifier:
         Raises FileNotFound if required files are not there
         """
         # Keep track of the versions in our snapshot / delegation tree
-        self.tracked_versions:Dict[str, int] = {}
+        self.tracked_versions: Dict[str, int] = {}
 
         with open("1.root.json", "rb") as f:
             root_bytes = f.read()
@@ -61,7 +62,7 @@ class Verifier:
         """Verifies the delegation tree
 
         Raises FileNotFound if required files are not there
-        
+
         # TODO: TUF #1498 would enable handling expiry properly
         """
 
@@ -77,8 +78,10 @@ class Verifier:
         # verify timestamp
         with open("timestamp.json", "rb") as f:
             self._trusted_set.update_timestamp(f.read())
-        self._track_role_version("timestamp", self._trusted_set.timestamp.signed.version)
- 
+        self._track_role_version(
+            "timestamp", self._trusted_set.timestamp.signed.version
+        )
+
         # verify snapshot
         version = self._trusted_set.timestamp.signed.meta["snapshot.json"].version
         with open("{version}.snapshot.json", "rb") as f:
@@ -112,8 +115,4 @@ class Verifier:
                         f.read(), role.name, delegator_name
                     )
                     self._track_role_version(role.name, version)
-                    delegators.append(
-                        (role.name, self.trusted_set[role.name].signed)
-                    )
-
-    def verify_remaining()
+                    delegators.append((role.name, self.trusted_set[role.name].signed))
