@@ -381,11 +381,11 @@ class TufRepo:
             file.seek(0, io.SEEK_END)
             length = file.tell()
         targetfile = TargetFile(length, {"sha256": digest}, target_path)
-        targets_md.signed.targets[targetfile.pathpath] = targetfile
+        targets_md.signed.targets[targetfile.path] = targetfile
 
         self._write_edited_role(role, targets_md)
 
-        logger.info("Added target %s", target_path)
+        logger.info("Added target %s", targetfile.path)
 
 
 @click.group()
