@@ -323,7 +323,7 @@ class Repo:
 
         self._write_edited_role(delegator, md)
 
-        self.keyring.store_key(key)
+        self.keyring.store_key(delegate, key)
 
     def remove_key(self, delegator: str, delegate: str, keyid: str):
         md = self._load_role_for_edit(delegator)
