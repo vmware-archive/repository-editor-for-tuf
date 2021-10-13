@@ -10,7 +10,7 @@ setup(
     install_requires=[
         'Click',
         'securesystemslib[pynacl]',
-        'tuf',
+        'tuf==0.18.1',
     ],
     entry_points={
         'console_scripts': [
