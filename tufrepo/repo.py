@@ -161,7 +161,7 @@ class Repo:
             if delegator.delegations is None:
                 continue
 
-            for role in delegator.delegations.roles:
+            for role in delegator.delegations.roles.values():
                 try:
                     metainfo = snapshot.meta[f"{role.name}.json"]
                 except KeyError:
@@ -239,9 +239,9 @@ class Repo:
         # Timestamp update needed?
         timestamp_md = self._load_role_for_edit("timestamp")
         timestamp: Timestamp = timestamp_md.signed
-        if timestamp.meta["snapshot.json"].version != snapshot.version:
+        if timestamp.snapshot_meta.version != snapshot.version:
             logger.info(f"Updating Timestamp with snapshot version {snapshot.version}")
-            timestamp.update(MetaFile(snapshot.version))
+            timestamp.snapshot_meta = MetaFile(snapshot.version)
             self._write_edited_role("timestamp", timestamp_md)
         else:
             logger.info("Timestamp is already up-to-date")
@@ -289,8 +289,7 @@ class Repo:
             role = md.signed.roles.get(delegate)
         elif isinstance(md.signed, Targets):
             if md.signed.delegations is not None:
-                roles = md.signed.delegations.roles
-                role = next((r for r in roles if r.name == delegate), None)
+                role = md.signed.delegations.roles.get(delegate)
         else:
             raise ClickException(f"{delegator} is not a delegator")
 
@@ -308,42 +307,25 @@ class Repo:
         md = self._load_role_for_edit(delegator)
         key = self.keyring.generate_key()
 
-        if isinstance(md.signed, Root):
-            md.signed.add_key(delegate, key.public)
-        elif isinstance(md.signed, Targets):
+        if isinstance(md.signed, Root) or isinstance(md.signed, Targets):
             try:
-                roles = md.signed.delegations.roles
-                role = next(role for role in roles if role.name == delegate)
-            except (StopIteration, AttributeError):
+                md.signed.add_key(delegate, key.public)
+            except ValueError:
                 raise ClickException(f"{delegator} does not delegate to {delegate}")
-            role.keyids.add(key.public.keyid)
-            md.signed.delegations.keys[key.public.keyid] = key.public
         else:
             raise ClickException(f"{delegator} is not delegating metadata")
 
         self._write_edited_role(delegator, md)
-
         self.keyring.store_key(delegate, key)
 
     def remove_key(self, delegator: str, delegate: str, keyid: str):
         md = self._load_role_for_edit(delegator)
 
-        if isinstance(md.signed, Root):
-            md.signed.remove_key(delegate, keyid)
-        elif isinstance(md.signed, Targets):
+        if isinstance(md.signed, Root) or isinstance(md.signed, Targets):
             try:
-                roles = md.signed.delegations.roles
-                role = next(role for role in roles if role.name == delegate)
-            except (StopIteration, AttributeError):
+                md.signed.remove_key(delegate, keyid)
+            except ValueError:
                 raise ClickException(f"{delegator} does not delegate to {delegate}")
-            role.keyids.remove(keyid)
-            key_in_use = False
-            for role in roles:
-                if keyid in role.keyids:
-                    key_in_use = True
-                    break
-            if not key_in_use:
-                del md.signed.delegations.keys[keyid]
         else:
             raise ClickException(f"{delegator} is not delegating metadata")
 
@@ -364,10 +346,8 @@ class Repo:
         role = DelegatedRole(delegate, [], 1, terminating, paths, hash_prefixes)
 
         if targets.delegations is None:
-            targets.delegations = Delegations({}, [])
-        # TODO delegations needs an api for this -- or roles needs to be a ordereddict
-        # this is buggy and does not support ordering in any way
-        targets.delegations.roles.append(role)
+            targets.delegations = Delegations({}, OrderedDict())
+        targets.delegations.roles[role.name] = role
 
         self._write_edited_role(delegator, md)
 
