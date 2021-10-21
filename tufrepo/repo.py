@@ -375,13 +375,7 @@ class Repo:
 
     def add_target(self, role: str, target_path: str, local_file: str):
         targets_md = self._load_role_for_edit(role)
-
-        with open(local_file, "rb") as file:
-            digest_object = digest_fileobject(file)
-            digest = digest_object.hexdigest()
-            file.seek(0, io.SEEK_END)
-            length = file.tell()
-        targetfile = TargetFile(length, {"sha256": digest}, target_path)
+        targetfile = TargetFile.from_file(target_path, local_file)
         targets_md.signed.targets[targetfile.path] = targetfile
 
         self._write_edited_role(role, targets_md)
