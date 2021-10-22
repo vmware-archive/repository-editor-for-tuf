@@ -9,7 +9,7 @@ from typing import Optional, Tuple
 from tufrepo.repo import Repo
 from tufrepo.keys import Keyring
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("tufrepo")
 
 def get_role(ctx: click.Context) -> str:
     """Return parent commands 'role' parameter"""

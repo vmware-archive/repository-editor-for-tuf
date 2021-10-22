@@ -36,7 +36,7 @@ from tuf.ngclient import Updater
 from tufrepo.filesystem_fetcher import FilesystemFetcher
 from tufrepo.keys import Keyring
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("tufrepo")
 
 
 class Repo:

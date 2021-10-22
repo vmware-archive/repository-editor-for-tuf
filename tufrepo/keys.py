@@ -16,7 +16,7 @@ from tuf.api.metadata import (
 )
 from typing import Dict, List, Set
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("tufrepo")
 
 
 class PrivateKey:
@@ -36,20 +36,36 @@ class PrivateKey:
             return self.public.keyid == other.public.keyid
         return NotImplemented
 
-
 class Keyring(Dict[str, Set[PrivateKey]]):
     """ "Private key management for a repository
 
-    On Keyring initialization private keys are loaded for all found secrets in
+    On Keyring initialization private keys are loaded for all secrets in
       * env variables (TUF_REPO_PRIVATE_KEY_*) and
       * privkeys.json file
-    if they match a delegation keyid in the repository
+    for all delegating roles in this repository.
 
-    Private key secrets are only written to disk when generate_and_store_key()
-    is called.
+    Private key secrets are only written to disk when store_key() is called.
     """
 
+    def _load_key(self, rolename: str, key: Key):
+        # Load a private key from env var or the private key file
+        env_var = f"TUF_REPO_PRIVATE_KEY_{key.keyid}"
+        private = os.getenv(env_var) or self._privkeyfile.get(key.keyid)
+
+        if private:
+            if rolename not in self:
+                self[rolename] = set()
+            self[rolename].add(PrivateKey(key, private))
+
     def __init__(self) -> None:
+        try:
+            with open("privkeys.json", "r") as f:
+                self._privkeyfile: Dict[str, str] = json.loads(f.read())
+        except json.JSONDecodeError as e:
+            raise RuntimeError("Failed to read privkeys.json")
+        except FileNotFoundError:
+            self._privkeys = {}
+
         # find all delegating roles in the repository
         roles: Dict[str, int] = {}
         for filename in glob.glob("*.*.json"):
@@ -60,44 +76,18 @@ class Keyring(Dict[str, Set[PrivateKey]]):
                 )
 
         # find all signing keys for all roles
-        role_keys: Dict[str, List[Key]] = {}
         for delegating_role, version in roles.items():
             md = Metadata.from_file(f"{version}.{delegating_role}.json")
             if isinstance(md.signed, Root):
                 for rolename, role in md.signed.roles.items():
-                    if rolename not in role_keys:
-                        role_keys[rolename] = []
                     for keyid in role.keyids:
-                        role_keys[rolename].append(md.signed.keys[keyid])
+                        self._load_key(rolename, md.signed.keys[keyid])
             elif isinstance(md.signed, Targets):
                 if md.signed.delegations is None:
                     continue
                 for role in md.signed.delegations.roles.values():
-                    if role.name not in role_keys:
-                        role_keys[role.name] = []
                     for keyid in role.keyids:
-                        role_keys[role.name].append(md.signed.delegations.keys[keyid])
-
-        try:
-            with open("privkeys.json", "r") as f:
-                privkeyfile: Dict[str, str] = json.loads(f.read())
-        except json.JSONDecodeError as e:
-            raise RuntimeError("Failed to read privkeys.json")
-        except FileNotFoundError:
-            privkeyfile = {}
-
-        # figure out which keys we have private keys for, store in keyring
-        for rolename, keys in role_keys.items():
-            role_priv_keys = set()
-            for key in keys:
-                # Get private key from env variable or privkeys.json
-                env_var = f"TUF_REPO_PRIVATE_KEY_{key.keyid}"
-                private = os.getenv(env_var) or privkeyfile.get(key.keyid)
-                if private:
-                    role_priv_keys.add(PrivateKey(key, private))
-
-            if role_priv_keys:
-                self[rolename] = role_priv_keys
+                        self._load_key(role.name, md.signed.delegations.keys[keyid])
 
         logger.info("Loaded keyring with keys for %d roles", len(self))
 
