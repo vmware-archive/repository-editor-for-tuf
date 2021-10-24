@@ -207,44 +207,48 @@ class Repo:
         """Update snapshot and timestamp meta information
 
         This command only updates the meta information in snapshot/timestamp
-        according to current files: it does not validate those files in any
+        according to current filenames: it does not validate those files in any
         way. Run 'verify' after 'snapshot' to validate repository state.
         """
 
-        # Find all Targets metadata in repo...
-        targets = {}
-        for filename in glob.glob("*.*.json"):
-            version, role = filename[: -len(".json")].split(".")
-            if role not in ["root", "snapshot", "timestamp"]:
-                targets[f"{role}.json"] = int(version)
-
-        # Snapshot update needed?
-        update_needed = False
         snapshot_md = self._load_role_for_edit("snapshot")
         snapshot: Snapshot = snapshot_md.signed
-        if len(snapshot.meta) != len(targets):
-            update_needed = True
-        else:
-            for fname, metainfo in snapshot.meta.items():
-                if fname not in targets or metainfo.version != targets[fname]:
-                    update_needed = True
 
-        if update_needed:
-            logger.info(f"Updating Snapshot with {len(targets)} targets metadata")
-            snapshot.meta = {f"{name}": MetaFile(ver) for name, ver in targets.items()}
-            self._write_edited_role("snapshot", snapshot_md)
-        else:
-            logger.info("Snapshot is already up-to-date")
+        # Snapshot update is needed if
+        # * any targets files are not in snapshot or
+        # * any targets version is incorrect
+        # NOTE: we trust the version in the filename to be correct here
+        updated_snapshot = False
+        for filename in glob.glob("*.*.json"):
+            version, role = filename[: -len(".json")].split(".")
+            version = int(version)
+            if role in ["root", "snapshot", "timestamp"]:
+                continue
 
-        # Timestamp update needed?
+            if f"{role}.json" not in snapshot.meta:
+                meta_version = 0
+            else:
+                meta_version = snapshot.meta[f"{role}.json"].version
+
+            if version < meta_version:
+                raise ClickException(f"Role {role} version rollback")
+            elif version > meta_version:
+                updated_snapshot = True
+                snapshot.meta[f"{role}.json"] = MetaFile(version)
+
+        if not updated_snapshot:
+            logger.info("Snapshot update not needed")
+            return
+
+        logger.info(f"Updating Snapshot with {len(snapshot.meta)} targets metadata")
+        self._write_edited_role("snapshot", snapshot_md)
+
+        # Timestamp update
         timestamp_md = self._load_role_for_edit("timestamp")
         timestamp: Timestamp = timestamp_md.signed
-        if timestamp.snapshot_meta.version != snapshot.version:
-            logger.info(f"Updating Timestamp with snapshot version {snapshot.version}")
-            timestamp.snapshot_meta = MetaFile(snapshot.version)
-            self._write_edited_role("timestamp", timestamp_md)
-        else:
-            logger.info("Timestamp is already up-to-date")
+        logger.info(f"Updating Timestamp with snapshot version {snapshot.version}")
+        timestamp.snapshot_meta = MetaFile(snapshot.version)
+        self._write_edited_role("timestamp", timestamp_md)
 
     def init_role(self, role: str, expiry_period: int):
         filename = self._get_filename(role)
