@@ -21,6 +21,9 @@ class TestCLI(unittest.TestCase):
         self.tempdir = tempfile.TemporaryDirectory()
         self.cwd = self.tempdir.name
 
+        subprocess.run(["git", "config", "--global", "user.name", "test"])
+        subprocess.run(["git", "config", "--global", "user.email", "test@example.com"])
+
     def tearDown(self):
         self.tempdir.cleanup()
 
