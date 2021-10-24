@@ -64,7 +64,7 @@ class Keyring(Dict[str, Set[PrivateKey]]):
         except json.JSONDecodeError as e:
             raise RuntimeError("Failed to read privkeys.json")
         except FileNotFoundError:
-            self._privkeys = {}
+            self._privkeyfile = {}
 
         # find all delegating roles in the repository
         roles: Dict[str, int] = {}
