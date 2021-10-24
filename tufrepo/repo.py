@@ -357,6 +357,16 @@ class Repo:
 
         logger.info("Delegated from %s to %s", delegator, delegate)
 
+    def remove_delegation(self, delegator: str, delegate: str):
+        md = self._load_role_for_edit(delegator)
+        targets: Targets = md.signed
+
+        del targets.delegations.roles[delegate]
+        # TODO remove keys if unused?
+        # TODO remove the delegated role targets file?
+
+        self._write_edited_role(delegator, md)
+
     def add_target(self, role: str, target_path: str, local_file: str):
         targets_md = self._load_role_for_edit(role)
         targetfile = TargetFile.from_file(target_path, local_file)

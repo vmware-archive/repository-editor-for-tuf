@@ -156,3 +156,14 @@ def add_delegation(
     paths_list = list(paths) if paths else None
     prefix_list = list(hash_prefixes) if hash_prefixes else None
     repo.add_delegation(role, delegate, terminating, paths_list, prefix_list)
+
+@edit.command()
+@click.pass_context
+@click.argument("delegate")
+def remove_delegation(
+    ctx: click.Context,
+    delegate: str,
+):
+    repo = Repo(Keyring())
+    role = get_role(ctx)
+    repo.remove_delegation(role, delegate)
