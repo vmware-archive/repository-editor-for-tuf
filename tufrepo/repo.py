@@ -267,8 +267,7 @@ class Repo:
             root_signed = Root(1, "1.0.19", expiry_date, {}, roles, True)
             role_md = Metadata(root_signed, OrderedDict())
         elif role == "timestamp":
-            meta = {"snapshot.json": MetaFile(1)}
-            timestamp_signed = Timestamp(1, "1.0.19", expiry_date, meta)
+            timestamp_signed = Timestamp(1, "1.0.19", expiry_date, MetaFile(1))
             role_md = Metadata(timestamp_signed, OrderedDict())
         elif role == "snapshot":
             snapshot_signed = Snapshot(1, "1.0.19", expiry_date, {})
