@@ -30,7 +30,7 @@ class TestCLI(unittest.TestCase):
                 f"Expected '{needle}...', got '{haystack[:len(needle)]}...'"
             )
 
-    def _run(self, args: str, expected_out:Optional[str]=None, expected_err:Optional[str]=None) -> subprocess.CompletedProcess:
+    def _run(self, args: str, expected_out:Optional[str]="", expected_err:Optional[str]="") -> subprocess.CompletedProcess:
         proc = subprocess.run(
             args=["tufrepo"] + args.split(),
             capture_output=True, 
@@ -45,7 +45,7 @@ class TestCLI(unittest.TestCase):
 
         return proc
  
-    Data = NamedTuple("TestData", [("argv", List[str]), ("expect_out", str)])
+    Data = NamedTuple("TestData", [("argv", str), ("expect_out", str)])
     valid_commands: Dict[str, Data] = {
         "no args": Data("", "Usage: tufrepo [OPTIONS] COMMAND [ARGS]"),
         "help": Data("--help", "Usage: tufrepo [OPTIONS] COMMAND [ARGS]"),
@@ -67,34 +67,79 @@ class TestCLI(unittest.TestCase):
     @run_sub_tests_with_dataset(valid_commands)
     def test_basics(self, data: Data):
         """Test (mostly help) commands that work without metadata"""
-        proc = self._run(data.argv, expected_err="")
+        proc = self._run(data.argv, expected_out=None)
         self.assertStartsWith(proc.stdout, data.expect_out)
 
     def test_repo_management(self):
         """Test (roughly) the tutorial from README"""
         subprocess.run(["git", "init", "."], cwd=self.cwd, capture_output=True)
 
-        proc = self._run("edit root init", expected_err="", expected_out="")
-        proc = self._run("edit root add-key root", expected_err="", expected_out="")
-        proc = self._run("edit root add-key root", expected_err="", expected_out="")
-        proc = self._run("edit root set-threshold root 2", expected_err="", expected_out="")
-        proc = self._run("edit root add-key snapshot", expected_err="", expected_out="")
-        proc = self._run("edit root add-key timestamp", expected_err="", expected_out="")
-        proc = self._run("edit root add-key targets", expected_err="", expected_out="")
-        files = ["1.root.json", ".git", "privkeys.json"]
-        self.assertEqual(os.listdir(self.cwd), files)
+        # Create initial metadata
+        self._run("edit root init")
+        self._run("edit root add-key root")
+        self._run("edit root add-key root")
+        self._run("edit root set-threshold root 2")
+        self._run("edit root add-key snapshot")
+        self._run("edit root add-key timestamp")
+        self._run("edit root add-key targets")
+        self._run("edit timestamp init")
+        self._run("edit snapshot init")
+        self._run("edit targets init")
+        self._run("snapshot")
 
-        proc = self._run("edit timestamp init", expected_err="", expected_out="")
-        proc = self._run("edit snapshot init", expected_err="", expected_out="")
-        proc = self._run("edit targets init", expected_err="", expected_out="")
-        files = ["1.root.json", "1.snapshot.json", ".git", "1.targets.json", "timestamp.json", "privkeys.json"]
-        self.assertEqual(os.listdir(self.cwd), files)
+        files = [".git", "1.root.json", "1.snapshot.json", "1.targets.json", "privkeys.json", "timestamp.json"]
+        self.assertEqual(sorted(os.listdir(self.cwd)), sorted(files))
 
-        proc = self._run("snapshot", expected_err="", expected_out="")
-        proc = self._run("verify", expected_err="")
+        proc = self._run("verify", expected_out=None)
         self.assertStartsWith(proc.stdout, "Metadata with 0 delegated targets verified")
 
-        # TODO test all other commands
+        subprocess.run(["git", "commit", "-a", "-m", "Initial metadata"], cwd=self.cwd, capture_output=True)
+
+        # Add new role, delegate to role, update snapshot
+        self._run("edit targets add-delegation --path 'files/*' role1")
+        self._run("edit targets add-key role1")
+        self._run("edit role1 init")
+        self._run("snapshot")
+
+        files.remove("1.snapshot.json")
+        files.remove("1.targets.json")
+        files.extend(["2.snapshot.json", "2.targets.json", "1.role1.json"])
+        self.assertEqual(sorted(os.listdir(self.cwd)), sorted(files))
+
+        proc = self._run("verify", expected_out=None)
+        self.assertStartsWith(proc.stdout, "Metadata with 1 delegated targets verified")
+
+        subprocess.run(["git", "commit", "-a", "-m", "Add role1"], cwd=self.cwd, capture_output=True)
+
+        # Add target to role1, update snapshot
+        self._run("edit role1 add-target files/file1.txt timestamp.json")
+        self._run("snapshot")
+
+        files.remove("1.role1.json")
+        files.remove("2.snapshot.json")
+        files.extend(["3.snapshot.json", "2.role1.json"])
+        self.assertEqual(sorted(os.listdir(self.cwd)), sorted(files))
+
+        proc = self._run("verify", expected_out=None)
+        self.assertStartsWith(proc.stdout, "Metadata with 1 delegated targets verified")
+
+        subprocess.run(["git", "commit", "-a", "-m", "Add target"], cwd=self.cwd, capture_output=True)
+
+        # Remove delegation, remove delegated role
+        self._run("edit targets remove-delegation role1")
+        self._run("snapshot")
+        subprocess.run(["git", "rm", "2.role1.json"], cwd=self.cwd, capture_output=True)
+
+        files.remove("3.snapshot.json")
+        files.remove("2.targets.json")
+        files.remove("2.role1.json")
+        files.extend(["4.snapshot.json", "3.targets.json"])
+        self.assertEqual(sorted(os.listdir(self.cwd)), sorted(files))
+
+        proc = self._run("verify", expected_out=None)
+        self.assertStartsWith(proc.stdout, "Metadata with 0 delegated targets verified")
+
+        subprocess.run(["git", "commit", "-a", "-m", "Remove delegation"], cwd=self.cwd, capture_output=True)
 
 if __name__ == '__main__':
     unittest.main()
