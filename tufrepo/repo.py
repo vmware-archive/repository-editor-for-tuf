@@ -374,3 +374,13 @@ class Repo:
         self._write_edited_role(role, targets_md)
 
         logger.info("Added target %s", targetfile.path)
+
+    def remove_target(self, role: str, target_path: str):
+        targets_md = self._load_role_for_edit(role)
+        targets: Targets = targets_md.signed
+
+        del targets.targets[target_path]
+
+        self._write_edited_role(role, targets_md)
+
+        logger.info("Removed target %s", target_path)

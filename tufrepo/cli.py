@@ -139,6 +139,15 @@ def add_target(ctx: click.Context, target: str, local_file: str):
 
 @edit.command()
 @click.pass_context
+@click.argument("target")
+def remove_target(ctx: click.Context, target: str):
+    """Remove TARGET from a Targets role ROLE"""
+    repo = Repo(Keyring())
+    repo.remove_target(get_role(ctx), target)
+
+
+@edit.command()
+@click.pass_context
 @click.argument("delegate")
 @click.option("--terminating/--non-terminating", default=False)
 @click.option("--path", "paths", multiple=True)

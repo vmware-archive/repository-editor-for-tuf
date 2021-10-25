@@ -128,15 +128,27 @@ class TestCLI(unittest.TestCase):
 
         subprocess.run(["git", "commit", "-a", "-m", "Add target"], cwd=self.cwd, capture_output=True)
 
+        # Remove a target, update snapshot
+        self.maxDiff=None
+        self._run("edit role1 remove-target files/file1.txt")
+        self._run("snapshot")
+
+        files.remove("2.role1.json")
+        files.remove("3.snapshot.json")
+        files.extend(["4.snapshot.json", "3.role1.json"])
+        self.assertEqual(sorted(os.listdir(self.cwd)), sorted(files))
+
+        subprocess.run(["git", "commit", "-a", "-m", "Remove target"], cwd=self.cwd, capture_output=True)
+
         # Remove delegation, remove delegated role
         self._run("edit targets remove-delegation role1")
         self._run("snapshot")
-        subprocess.run(["git", "rm", "2.role1.json"], cwd=self.cwd, capture_output=True)
+        subprocess.run(["git", "rm", "3.role1.json"], cwd=self.cwd, capture_output=True)
 
-        files.remove("3.snapshot.json")
+        files.remove("4.snapshot.json")
         files.remove("2.targets.json")
-        files.remove("2.role1.json")
-        files.extend(["4.snapshot.json", "3.targets.json"])
+        files.remove("3.role1.json")
+        files.extend(["5.snapshot.json", "3.targets.json"])
         self.assertEqual(sorted(os.listdir(self.cwd)), sorted(files))
 
         proc = self._run("verify", expected_out=None)
