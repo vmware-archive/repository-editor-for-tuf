@@ -28,6 +28,5 @@ jobs:
         run: python3 -m pip install -r requirements.txt -e .
 
       - name: Run tests
-        run: |
-          cd tests
-          python3 -m unittest
+        working-directory: tests
+        run: python3 -m unittest
