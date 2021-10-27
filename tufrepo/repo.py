@@ -139,10 +139,10 @@ class Repo:
         fsfetcher = FilesystemFetcher({"http://localhost/fakeurl/": "."})
         try:
             updater = Updater(
-                client_dir.name,
-                "http://localhost/fakeurl/",
-                "http://localhost/fakeurl/",
-                fsfetcher,
+                repository_dir=client_dir.name,
+                metadata_base_url="http://localhost/fakeurl/",
+                target_base_url="http://localhost/fakeurl/",
+                fetcher=fsfetcher,
             )
             updater.refresh()
         except RepositoryError as e:
