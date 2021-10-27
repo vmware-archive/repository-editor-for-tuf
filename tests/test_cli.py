@@ -21,9 +21,6 @@ class TestCLI(unittest.TestCase):
         self.tempdir = tempfile.TemporaryDirectory()
         self.cwd = self.tempdir.name
 
-        subprocess.run(["git", "config", "--global", "user.name", "test"])
-        subprocess.run(["git", "config", "--global", "user.email", "test@example.com"])
-
     def tearDown(self):
         self.tempdir.cleanup()
 
@@ -76,6 +73,8 @@ class TestCLI(unittest.TestCase):
     def test_repo_management(self):
         """Test (roughly) the tutorial from README"""
         subprocess.run(["git", "init", "."], cwd=self.cwd, capture_output=True)
+        subprocess.run(["git", "config", "--local", "user.name", "test"], cwd=self.cwd)
+        subprocess.run(["git", "config", "--local", "user.email", "test@example.com"], cwd=self.cwd)
 
         # Create initial metadata
         self._run("edit root init")
