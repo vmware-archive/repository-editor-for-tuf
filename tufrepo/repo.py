@@ -16,6 +16,7 @@ from tempfile import TemporaryDirectory
 from typing import List, Optional, Tuple
 
 from click.exceptions import ClickException
+from securesystemslib.exceptions import StorageError
 from securesystemslib.hash import digest_fileobject
 from tuf.exceptions import RepositoryError
 from tuf.api.metadata import (
@@ -122,7 +123,11 @@ class Repo:
         self._git(["add", "--intent-to-add", new_filename])
 
     def _load_role_for_edit(self, role: str) -> Metadata:
-        return Metadata.from_file(self._get_filename(role))
+        fname = self._get_filename(role)
+        try:
+            return Metadata.from_file(fname)
+        except StorageError as e:
+            raise ClickException(f"Failed to open {fname}.") from e
 
     def verify(self, root_hash: Optional[str]):
         if root_hash is not None:
