@@ -19,11 +19,13 @@ TUF repositories for demo purposes.
 
 It is also at early stages of development and should be considered
 experimental and unstable:
- * Functionality is still missing (in particular many `add-*` sub-commands
-   for edit exist but matching `remove-*` functionality is missing)
- * There's no "repo init" command yet to handle creating a basic repository
- * Private key management and target file handling need work
- * Packaging is work-in-progress
+ * Testing is minimal
+ * There's no "repo init" command yet to handle creating a repository with a
+   single command
+ * Private key management is minimal: removing keys requires editing a file,
+   using an existing key is not supported
+ * target file handling is not complete: in particular hash prefixes are not generated
+ * No releases or packages are available
 
 ## How it works
 
