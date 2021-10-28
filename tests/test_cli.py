@@ -142,6 +142,14 @@ class TestCLI(unittest.TestCase):
         files.add("3.snapshot.json")
         self.assertEqual(set(os.listdir(self.cwd)), files)
 
+        # Make a timestamp update
+        self._run("edit timestamp touch")
+        proc = self._run("verify", expected_out=None)
+        subprocess.run(["git", "commit", "-a", "-m", "Add target"], cwd=self.cwd, capture_output=True)
+
+        self.assertStartsWith(proc.stdout, "Metadata with 1 delegated targets verified")
+        self.assertEqual(set(os.listdir(self.cwd)), files)
+
         # Remove a target, update snapshot
         self.maxDiff=None
         self._run("edit role1 remove-target files/file1.txt")
