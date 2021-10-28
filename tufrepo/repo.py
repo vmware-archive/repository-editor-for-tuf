@@ -135,6 +135,9 @@ class Repo:
             raise ClickException(f"Failed to open {fname}.") from e
 
     def verify(self, root_hash: Optional[str]):
+        if not os.path.exists("1.root.json"):
+            raise ClickException("Failed to find 1.root.json")
+
         if root_hash is not None:
             # verify initial root is what we expected
             with open("1.root.json") as initial_root:
