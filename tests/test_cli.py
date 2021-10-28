@@ -79,8 +79,6 @@ class TestCLI(unittest.TestCase):
         # Create initial metadata
         self._run("edit root init")
         self._run("edit root add-key root")
-        self._run("edit root add-key root")
-        self._run("edit root set-threshold root 2")
         self._run("edit root add-key snapshot")
         self._run("edit root add-key timestamp")
         self._run("edit root add-key targets")
@@ -93,6 +91,15 @@ class TestCLI(unittest.TestCase):
 
         self.assertStartsWith(proc.stdout, "Metadata with 0 delegated targets verified")
         files = [".git", "1.root.json", "1.snapshot.json", "1.targets.json", "privkeys.json", "timestamp.json"]
+        self.assertEqual(sorted(os.listdir(self.cwd)), sorted(files))
+
+        self._run("edit root add-key root")
+        self._run("edit root set-threshold root 2")
+        proc = self._run("verify", expected_out=None)
+        subprocess.run(["git", "commit", "-a", "-m", "root edit"], cwd=self.cwd, capture_output=True)
+
+        self.assertStartsWith(proc.stdout, "Metadata with 0 delegated targets verified")
+        files.append("2.root.json")
         self.assertEqual(sorted(os.listdir(self.cwd)), sorted(files))
 
         # Add new role, delegate to role

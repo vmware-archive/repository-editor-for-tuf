@@ -92,11 +92,15 @@ class Repo:
 
     def _write_edited_role(self, role: str, md: Metadata, period: Optional[int] = None):
         old_filename = Repo._get_filename(role, md.signed.version)
+        delete_old = False
 
         # only bump version once (if file is unchanged according to git)
         diff_cmd = ["diff", "--exit-code", "--no-patch", "--", old_filename]
         if os.path.exists(old_filename) and self._git(diff_cmd) == 0:
             md.signed.version += 1
+            # only snapshots need deleting (targets are deleted in snapshot())
+            if role == "snapshot":
+                delete_old = True
 
         # Store expiry period if given
         if period is not None:
@@ -118,11 +122,7 @@ class Repo:
         new_filename = self._get_filename(role, md.signed.version)
         md.to_file(new_filename, JSONSerializer())
 
-        # Don't delete old target versions: they are still part of snapshot
-        if (old_filename is not None and
-            new_filename != old_filename and
-            role in ["root", "timestamp", "snapshot"]):
-
+        if delete_old:
             os.remove(old_filename)
 
         self._git(["add", "--intent-to-add", new_filename])
