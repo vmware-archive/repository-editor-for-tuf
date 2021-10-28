@@ -90,8 +90,8 @@ class TestCLI(unittest.TestCase):
         subprocess.run(["git", "commit", "-a", "-m", "Initial metadata"], cwd=self.cwd, capture_output=True)
 
         self.assertStartsWith(proc.stdout, "Metadata with 0 delegated targets verified")
-        files = [".git", "1.root.json", "1.snapshot.json", "1.targets.json", "privkeys.json", "timestamp.json"]
-        self.assertEqual(sorted(os.listdir(self.cwd)), sorted(files))
+        files = {".git", "1.root.json", "1.snapshot.json", "1.targets.json", "privkeys.json", "timestamp.json"}
+        self.assertEqual(set(os.listdir(self.cwd)), files)
 
         self._run("edit root add-key root")
         self._run("edit root set-threshold root 2")
@@ -99,8 +99,8 @@ class TestCLI(unittest.TestCase):
         subprocess.run(["git", "commit", "-a", "-m", "root edit"], cwd=self.cwd, capture_output=True)
 
         self.assertStartsWith(proc.stdout, "Metadata with 0 delegated targets verified")
-        files.append("2.root.json")
-        self.assertEqual(sorted(os.listdir(self.cwd)), sorted(files))
+        files.add("2.root.json")
+        self.assertEqual(set(os.listdir(self.cwd)), files)
 
         # Add new role, delegate to role
         self._run("edit targets add-delegation --path 'files/*' role1")
@@ -110,8 +110,8 @@ class TestCLI(unittest.TestCase):
         subprocess.run(["git", "commit", "-a", "-m", "Add role, delegate"], cwd=self.cwd, capture_output=True)
 
         self.assertStartsWith(proc.stdout, "Metadata with 0 delegated targets verified")
-        files.extend(["2.targets.json", "1.role1.json"])
-        self.assertEqual(sorted(os.listdir(self.cwd)), sorted(files))
+        files |= { "2.targets.json", "1.role1.json" }
+        self.assertEqual(set(os.listdir(self.cwd)), files)
 
         # Update snapshot
         self._run("snapshot")
@@ -119,10 +119,9 @@ class TestCLI(unittest.TestCase):
         subprocess.run(["git", "commit", "-a", "-m", "snapshot"], cwd=self.cwd, capture_output=True)
 
         self.assertStartsWith(proc.stdout, "Metadata with 1 delegated targets verified")
-        files.remove("1.snapshot.json")
-        files.remove("1.targets.json")
-        files.append("2.snapshot.json")
-        self.assertEqual(sorted(os.listdir(self.cwd)), sorted(files))
+        files -= { "1.snapshot.json", "1.targets.json" }
+        files.add("2.snapshot.json")
+        self.assertEqual(set(os.listdir(self.cwd)), files)
 
         # Add target to role1
         self._run("edit role1 add-target files/file1.txt timestamp.json")
@@ -130,8 +129,8 @@ class TestCLI(unittest.TestCase):
         subprocess.run(["git", "commit", "-a", "-m", "Add target"], cwd=self.cwd, capture_output=True)
 
         self.assertStartsWith(proc.stdout, "Metadata with 1 delegated targets verified")
-        files.append("2.role1.json")
-        self.assertEqual(sorted(os.listdir(self.cwd)), sorted(files))
+        files.add("2.role1.json")
+        self.assertEqual(set(os.listdir(self.cwd)), files)
 
         # update snapshot
         self._run("snapshot")
@@ -139,10 +138,9 @@ class TestCLI(unittest.TestCase):
         subprocess.run(["git", "commit", "-a", "-m", "Add target"], cwd=self.cwd, capture_output=True)
 
         self.assertStartsWith(proc.stdout, "Metadata with 1 delegated targets verified")
-        files.remove("1.role1.json")
-        files.remove("2.snapshot.json")
-        files.append("3.snapshot.json")
-        self.assertEqual(sorted(os.listdir(self.cwd)), sorted(files))
+        files -= { "1.role1.json", "2.snapshot.json" }
+        files.add("3.snapshot.json")
+        self.assertEqual(set(os.listdir(self.cwd)), files)
 
         # Remove a target, update snapshot
         self.maxDiff=None
@@ -150,10 +148,9 @@ class TestCLI(unittest.TestCase):
         self._run("snapshot")
         subprocess.run(["git", "commit", "-a", "-m", "Remove target"], cwd=self.cwd, capture_output=True)
 
-        files.remove("2.role1.json")
-        files.remove("3.snapshot.json")
-        files.extend(["4.snapshot.json", "3.role1.json"])
-        self.assertEqual(sorted(os.listdir(self.cwd)), sorted(files))
+        files -= { "3.snapshot.json", "2.role1.json" }
+        files |= { "4.snapshot.json", "3.role1.json" }
+        self.assertEqual(set(os.listdir(self.cwd)), files)
 
         # Remove delegation, remove delegated role
         self._run("edit targets remove-delegation role1")
@@ -163,11 +160,9 @@ class TestCLI(unittest.TestCase):
         subprocess.run(["git", "commit", "-a", "-m", "Remove delegation"], cwd=self.cwd, capture_output=True)
 
         self.assertStartsWith(proc.stdout, "Metadata with 0 delegated targets verified")
-        files.remove("4.snapshot.json")
-        files.remove("2.targets.json")
-        files.remove("3.role1.json")
-        files.extend(["5.snapshot.json", "3.targets.json"])
-        self.assertEqual(sorted(os.listdir(self.cwd)), sorted(files))
+        files -= { "4.snapshot.json", "2.targets.json", "3.role1.json" }
+        files |= { "5.snapshot.json", "3.targets.json" }
+        self.assertEqual(set(os.listdir(self.cwd)), files)
 
 if __name__ == '__main__':
     unittest.main()
