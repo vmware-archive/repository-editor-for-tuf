@@ -13,7 +13,7 @@ import subprocess
 from collections import OrderedDict
 from datetime import datetime, timedelta
 from tempfile import TemporaryDirectory
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from click.exceptions import ClickException
 from securesystemslib.exceptions import StorageError
@@ -92,11 +92,15 @@ class Repo:
 
     def _write_edited_role(self, role: str, md: Metadata, period: Optional[int] = None):
         old_filename = Repo._get_filename(role, md.signed.version)
+        delete_old = False
 
         # only bump version once (if file is unchanged according to git)
         diff_cmd = ["diff", "--exit-code", "--no-patch", "--", old_filename]
         if os.path.exists(old_filename) and self._git(diff_cmd) == 0:
             md.signed.version += 1
+            # only snapshots need deleting (targets are deleted in snapshot())
+            if role == "snapshot":
+                delete_old = True
 
         # Store expiry period if given
         if period is not None:
@@ -117,7 +121,8 @@ class Repo:
 
         new_filename = self._get_filename(role, md.signed.version)
         md.to_file(new_filename, JSONSerializer())
-        if old_filename and new_filename != old_filename and role != "root":
+
+        if delete_old:
             os.remove(old_filename)
 
         self._git(["add", "--intent-to-add", new_filename])
@@ -152,7 +157,6 @@ class Repo:
             updater.refresh()
         except RepositoryError as e:
             # TODO: improve this message by checking for common mistakes?
-            print(e)
             raise ClickException("Top-level metadata fails to validate") from e
 
         # recursively verify all targets in delegation tree
@@ -195,14 +199,6 @@ class Repo:
                             "Delegated target fails to validate"
                         ) from e
 
-        # finally make sure no json files exist outside the delegation tree
-        for filename in glob.glob("*.*.json"):
-            _, role = filename[: -len(".json")].split(".")
-            if role not in updater._trusted_set:
-                raise ClickException(
-                    f"Delegated target file {filename} is not part of trusted metadata"
-                )
-
         deleg_count = len(updater._trusted_set) - 4
 
         print(f"Metadata with {deleg_count} delegated targets verified")
@@ -219,17 +215,22 @@ class Repo:
         snapshot_md = self._load_role_for_edit("snapshot")
         snapshot: Snapshot = snapshot_md.signed
 
-        # Snapshot update is needed if
-        # * any targets files are not in snapshot or
-        # * any targets version is incorrect
-        # NOTE: we trust the version in the filename to be correct here
-        updated_snapshot = False
+        # Find targets role name and newest version
+        # NOTE: we trust the version in the filenames to be correct here
+        targets_roles: Dict[str, int] = {}
         for filename in glob.glob("*.*.json"):
             version, role = filename[: -len(".json")].split(".")
             version = int(version)
             if role in ["root", "snapshot", "timestamp"]:
                 continue
+            if version > targets_roles.get(role, 0):
+                targets_roles[role] = version
 
+        # Snapshot update is needed if
+        # * any targets files are not in snapshot or
+        # * any targets version is incorrect
+        updated_snapshot = False
+        for role, version in targets_roles.items():
             if f"{role}.json" not in snapshot.meta:
                 meta_version = 0
             else:
@@ -240,6 +241,12 @@ class Repo:
             elif version > meta_version:
                 updated_snapshot = True
                 snapshot.meta[f"{role}.json"] = MetaFile(version)
+
+                # delete the older file (if any): it is not part of snapshot
+                try:
+                    os.remove(f"{meta_version}.{role}.json")
+                except FileNotFoundError:
+                    pass
 
         if not updated_snapshot:
             logger.info("Snapshot update not needed")
