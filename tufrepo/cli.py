@@ -4,9 +4,10 @@
 import click
 import logging
 from datetime import timedelta
-from typing import Optional, Tuple
+from typing import List, Optional, OrderedDict, Tuple
 
-from tufrepo.repo import Repo
+from tuf.api.metadata import DelegatedRole, Delegations, TargetFile
+from tufrepo.repo import FilesystemRepository, editor_add_key, editor_remove_key, editor_set_threshold, verify_repo
 from tufrepo.keys import Keyring
 
 logger = logging.getLogger("tufrepo")
@@ -31,22 +32,22 @@ def cli(verbose: int = 0):
 @click.argument("roles", nargs=-1)
 def sign(roles: Tuple[str]):
     """Sign the given roles, using all usable keys in keyring"""
-    repo = Repo(Keyring())
-    repo.sign(list(roles))
-
+    repo = FilesystemRepository(Keyring())
+    for role in roles:
+        repo.sign(role)
 
 @cli.command()
 @click.option("--root-hash")
 def verify(root_hash: Optional[str] = None):
     """"""
-    repo = Repo(Keyring())
-    repo.verify(root_hash)
+    verify_repo(root_hash)
+    print(f"Keyring contains keys for [{', '.join(Keyring().keys())}].")
 
 
 @cli.command()
 def snapshot():
     """"""
-    repo = Repo(Keyring())
+    repo = FilesystemRepository(Keyring())
     repo.snapshot()
 
 
@@ -55,14 +56,15 @@ def snapshot():
 def edit(role: str):  # pylint: disable=unused-argument
     """Edit metadata for ROLE using the sub-commands."""
 
-
 @edit.command()
 @click.pass_context
 def touch(ctx: click.Context):
     """Mark ROLE as modified to force a new version"""
-    repo = Repo(Keyring())
-    repo.touch(get_role(ctx))
 
+    role = get_role(ctx)
+    repo = FilesystemRepository(Keyring())
+    with repo.edit(role):
+        pass
 
 @edit.command()
 @click.pass_context
@@ -76,9 +78,12 @@ def init(ctx: click.Context, expiry: Tuple[int, str]):
     """Create new metadata for ROLE. Example:
 
     tufrepo edit root init --expiry 52 weeks"""
-    repo = Repo(Keyring())
     delta = timedelta(**{expiry[1]: expiry[0]})
-    repo.init_role(get_role(ctx), int(delta.total_seconds()))
+    period = int(delta.total_seconds())
+    role = get_role(ctx)
+
+    repo = FilesystemRepository(Keyring())
+    repo.init_role(role, period)
 
 
 @edit.command()
@@ -87,8 +92,10 @@ def init(ctx: click.Context, expiry: Tuple[int, str]):
 @click.argument("threshold", type=int)
 def set_threshold(ctx: click.Context, delegate: str, threshold: int):
     """Set the threshold of delegated role DELEGATE."""
-    repo = Repo(Keyring())
-    repo.set_threshold(get_role(ctx), delegate, threshold)
+    role = get_role(ctx)
+    repo = FilesystemRepository(Keyring())
+    with repo.edit(role) as signed:
+        editor_set_threshold(signed, delegate, threshold)
 
 
 @edit.command()
@@ -101,9 +108,14 @@ def set_expiry(ctx: click.Context, expiry: Tuple[int, str]):
     """Set expiry period for the role. Example:
 
     tufrepo edit root set-expiry 52 weeks"""
-    repo = Repo(Keyring())
     delta = timedelta(**{expiry[1]: expiry[0]})
-    repo.set_expiry(get_role(ctx), int(delta.total_seconds()))
+    period = int(delta.total_seconds())
+    role = get_role(ctx)
+
+    repo = FilesystemRepository(Keyring())
+    with repo.edit(role) as signed:
+        # This should maybe be a repo feature? argument to edit?
+        signed.unrecognized_fields["x-tufrepo-expiry-period"] = period
 
 
 @edit.command()
@@ -113,8 +125,14 @@ def add_key(ctx: click.Context, delegate: str):
     """Add new signing key for delegated role DELEGATE
 
     The private key secret will be written to privkeys.json."""
-    repo = Repo(Keyring())
-    repo.add_key(get_role(ctx), delegate)
+    delegator = get_role(ctx)
+    keyring = Keyring()
+    key = keyring.generate_key()
+    repo = FilesystemRepository(keyring)
+
+    with repo.edit(delegator) as signed:    
+        editor_add_key(signed, delegator, delegate, key.public)
+    keyring.store_key(delegate, key)
 
 
 @edit.command()
@@ -123,27 +141,32 @@ def add_key(ctx: click.Context, delegate: str):
 @click.argument("keyid")
 def remove_key(ctx: click.Context, delegate: str, keyid: str):
     """Remove signing key from delegated role DELEGATE"""
-    repo = Repo(Keyring())
-    repo.remove_key(get_role(ctx), delegate, keyid)
+    delegator = get_role(ctx)
+    repo = FilesystemRepository(Keyring())
+    with repo.edit(delegator) as signed:
+        editor_remove_key(signed, delegator, delegate, keyid)
 
 
 @edit.command()
 @click.pass_context
-@click.argument("target")
+@click.argument("target-path")
 @click.argument("local-file")
-def add_target(ctx: click.Context, target: str, local_file: str):
+def add_target(ctx: click.Context, target_path: str, local_file: str):
     """Add a target to a Targets metadata role"""
-    repo = Repo(Keyring())
-    repo.add_target(get_role(ctx), target, local_file)
+    repo = FilesystemRepository(Keyring())
+    with repo.edit(get_role(ctx)) as targets:
+        targetfile = TargetFile.from_file(target_path, local_file)
+        targets.targets[targetfile.path] = targetfile
 
 
 @edit.command()
 @click.pass_context
-@click.argument("target")
-def remove_target(ctx: click.Context, target: str):
+@click.argument("target-path")
+def remove_target(ctx: click.Context, target_path: str):
     """Remove TARGET from a Targets role ROLE"""
-    repo = Repo(Keyring())
-    repo.remove_target(get_role(ctx), target)
+    repo = FilesystemRepository(Keyring())
+    with repo.edit(get_role(ctx)) as targets:
+        del targets.targets[target_path]
 
 
 @edit.command()
@@ -160,11 +183,16 @@ def add_delegation(
     hash_prefixes: Tuple[str],
 ):
     """Delegate from ROLE to DELEGATE"""
-    repo = Repo(Keyring())
-    role = get_role(ctx)
-    paths_list = list(paths) if paths else None
-    prefix_list = list(hash_prefixes) if hash_prefixes else None
-    repo.add_delegation(role, delegate, terminating, paths_list, prefix_list)
+    repo = FilesystemRepository(Keyring())
+    paths = list(paths) if paths else None
+    hash_prefixes = list(hash_prefixes) if hash_prefixes else None
+
+    with repo.edit(get_role(ctx)) as targets:
+        if targets.delegations is None:
+            targets.delegations = Delegations({}, OrderedDict())
+
+        role = DelegatedRole(delegate, [], 1, terminating, paths, hash_prefixes)
+        targets.delegations.roles[role.name] = role
 
 @edit.command()
 @click.pass_context
@@ -173,6 +201,6 @@ def remove_delegation(
     ctx: click.Context,
     delegate: str,
 ):
-    repo = Repo(Keyring())
-    role = get_role(ctx)
-    repo.remove_delegation(role, delegate)
+    repo = FilesystemRepository(Keyring())
+    with repo.edit(get_role(ctx)) as targets:
+        del targets.delegations.roles[delegate]

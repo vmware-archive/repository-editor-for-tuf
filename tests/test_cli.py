@@ -67,6 +67,7 @@ class TestCLI(unittest.TestCase):
     @run_sub_tests_with_dataset(valid_commands)
     def test_basics(self, data: Data):
         """Test (mostly help) commands that work without metadata"""
+        self.maxDiff=None
         proc = self._run(data.argv, expected_out=None)
         self.assertStartsWith(proc.stdout, data.expect_out)
 
@@ -86,6 +87,7 @@ class TestCLI(unittest.TestCase):
         self._run("edit snapshot init")
         self._run("edit targets init")
         self._run("snapshot")
+        self.maxDiff=None
         proc = self._run("verify", expected_out=None)
         subprocess.run(["git", "commit", "-a", "-m", "Initial metadata"], cwd=self.cwd, capture_output=True)
 
