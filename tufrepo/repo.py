@@ -3,6 +3,7 @@
 
 # Repo class implements repository operations. It is invoked by the CLI.
 
+from abc import abstractmethod
 import glob
 import logging
 import os
@@ -92,15 +93,93 @@ def editor_remove_key(self: Signed, delegator: str, delegate: str, keyid: str):
         raise ClickException(f"{delegator} is not delegating metadata")
 
 
-
-### Repository abtraction & git+file implementation
-# TODO Create a Repository interface for FilesystemRepository to derive from
-# Currently the implementation is specific to files, git and "x-tufrepo-" data
-class FilesystemRepository:
-    """Manages loading, saving (signing) repository metadata in files stored in git"""
-
+class Repository:
     def __init__(self, keyring: Keyring) -> None:
         self.keyring = keyring
+
+    def _sign_role(self, role: str, metadata: Metadata, clear_sigs: bool):
+        if clear_sigs:
+            metadata.signatures.clear()
+
+        try:
+            for key in self.keyring[role]:
+                keyid = key.public.keyid
+                logger.info("Signing role %s with key %s", role, keyid[:7])
+                metadata.sign(key.signer, append=True)
+        except KeyError:
+            logger.info(f"No keys for role %s found in keyring", role)
+
+    @abstractmethod
+    def _load(self, role:str) -> Metadata:
+        """Load metadata from storage or cache"""
+
+    @abstractmethod
+    def _save(self, role: str, md: Metadata, clear_sigs: bool = True):
+        """Sign and persist metadata in storage"""
+
+    @abstractmethod
+    def init_role(self, role:str, period: int):
+        """Initialize new metadata"""
+
+    def sign(self, role: str):
+        """sign without modifying content, or removing existing signatures"""
+        md = self._load(role)
+        self._save(role, md, False)
+
+    def snapshot(self, current_targets: Dict[str, MetaFile]) -> Dict[str, MetaFile]:
+        """Update snapshot and timestamp meta information
+
+        Updates the meta information in snapshot/timestamp according to input.
+
+        Returns the targets metafiles that were removed from snapshot
+        """
+
+        # Snapshot update is needed if
+        # * any targets files are not in snapshot or
+        # * any targets version is incorrect
+        updated_snapshot = False
+        removed_targets: Dict[str, MetaFile] = {}
+
+        with self.edit("snapshot") as snapshot:
+            for keyname, new_meta in current_targets.items():
+                if keyname not in snapshot.meta:
+                    updated_snapshot = True
+                    snapshot.meta[keyname] = new_meta
+                    continue
+
+                old_meta = snapshot.meta[keyname]
+                if new_meta.version < old_meta.version:
+                    raise ClickException(f"{keyname} version rollback")
+                elif new_meta.version > old_meta.version:
+                    updated_snapshot = True
+                    snapshot.meta[keyname] = new_meta
+                    removed_targets[keyname] = old_meta
+
+        if updated_snapshot:
+            logger.info(f"Snapshot updated with {len(snapshot.meta)} targets")
+            # Timestamp update
+            with self.edit("timestamp") as timestamp:
+                timestamp.snapshot_meta = MetaFile(snapshot.version)
+            logger.info("Timestamp updated")
+        else:
+            logger.info("Snapshot update not needed")
+
+        return removed_targets
+
+    @contextmanager
+    def edit(self, role:str, expiry: datetime, version: int) -> Generator[Signed, None, None]:
+        md = self._load(role)
+
+        yield md.signed
+
+        md.signed.expires = expiry
+        md.signed.version = version
+        self._save(role, md)
+
+
+### git+file implementation of Repository
+class FilesystemRepository(Repository):
+    """Manages loading, saving (signing) repository metadata in files stored in git"""
 
     @staticmethod
     def _git(command: List[str]):
@@ -133,15 +212,6 @@ class FilesystemRepository:
 
             return f"{version}.{role}.json"
 
-    def _sign_role(self, role: str, metadata: Metadata):
-        try:
-            for key in self.keyring[role]:
-                keyid = key.public.keyid
-                logger.info("Signing role %s with key %s", role, keyid[:7])
-                metadata.sign(key.signer, append=True)
-        except KeyError:
-            logger.info(f"No keys for role %s found in keyring", role)
-
     def _load(self, role:str) -> Metadata:
         fname = self._get_filename(role)
         try:
@@ -150,24 +220,17 @@ class FilesystemRepository:
             raise ClickException(f"Failed to open {fname}.") from e
 
     def _save(self, role: str, md: Metadata, clear_sigs: bool = True):
-        if clear_sigs:
-            md.signatures.clear()
-
-        self._sign_role(role, md)
+        self._sign_role(role, md, clear_sigs)
 
         fname = self._get_filename(role, md.signed.version)
         md.to_file(fname, JSONSerializer())
+
+        self._git(["add", "--intent-to-add", self._get_filename(role, md.signed.version)])
 
     def init_role(self, role:str, period: int):
         md = editor_init(role, self._get_expiry(period))
         md.signed.unrecognized_fields["x-tufrepo-expiry-period"] = period
         self._save(role, md)
-        self._git(["add", "--intent-to-add", self._get_filename(role, md.signed.version)])
-
-    def sign(self, role: str):
-        """sign without modifying content, or removing existing signatures"""
-        md = self._load(role)
-        self._save(role, md, False)
 
     def snapshot(self):
         """Update snapshot and timestamp meta information
@@ -179,78 +242,55 @@ class FilesystemRepository:
 
         # Find targets role name and newest version
         # NOTE: we trust the version in the filenames to be correct here
-        targets_roles: Dict[str, int] = {}
+        targets_roles: Dict[str, MetaFile] = {}
         for filename in glob.glob("*.*.json"):
-            version, role = filename[: -len(".json")].split(".")
+            version, keyname = filename[: -len(".json")].split(".")
             version = int(version)
-            if role in ["root", "snapshot", "timestamp"]:
+            if keyname in ["root", "snapshot", "timestamp"]:
                 continue
-            if version > targets_roles.get(role, 0):
-                targets_roles[role] = version
+            keyname = f"{keyname}.json"
+            
+            curr_role = targets_roles.get(keyname)
+            if not curr_role or version > curr_role.version:
+                targets_roles[keyname] = MetaFile(version)
 
-        # Snapshot update is needed if
-        # * any targets files are not in snapshot or
-        # * any targets version is incorrect
-        updated_snapshot = False
+        removed = super().snapshot(targets_roles)
 
-        with self.edit("snapshot") as snapshot:
-            for role, version in targets_roles.items():
-                if f"{role}.json" not in snapshot.meta:
-                    meta_version = 0
-                else:
-                    meta_version = snapshot.meta[f"{role}.json"].version
-
-                if version < meta_version:
-                    raise ClickException(f"Role {role} version rollback")
-                elif version > meta_version:
-                    updated_snapshot = True
-                    snapshot.meta[f"{role}.json"] = MetaFile(version)
-
-                    # delete the older file (if any): it is not part of snapshot
-                    try:
-                        os.remove(f"{meta_version}.{role}.json")
-                    except FileNotFoundError:
-                        pass
-            logger.info(f"Updating Snapshot with {len(snapshot.meta)} targets metadata")
-
-        if not updated_snapshot:
-            logger.info("Snapshot update not needed")
-            return
-
-        # Timestamp update
-        with self.edit("timestamp") as timestamp:
-            logger.info(f"Updating Timestamp with snapshot version {snapshot.version}")
-            timestamp.snapshot_meta = MetaFile(snapshot.version)
+        for keyname, meta in removed.items():
+            # delete the older file (if any): it is not part of snapshot
+            try:
+                os.remove(f"{meta.version}.{keyname}")
+            except FileNotFoundError:
+                pass
 
     @contextmanager
     def edit(self, role:str) -> Generator[Signed, None, None]:
         md = self._load(role)
-        old_filename = self._get_filename(role, md.signed.version)
+        version = md.signed.version
+        old_filename = self._get_filename(role, version)
+        remove_old = False
 
-        yield md.signed
-
-        # NOTE: uses implementation specific field: expiry could be handled
-        # by the caller (in yield) or be an argument
+        # Find out expiry and need for version bump
         try:
             period = md.signed.unrecognized_fields["x-tufrepo-expiry-period"]
         except KeyError:
             raise ClickException(
                 "Expiry period not found in metadata: use 'set-expiry'"
             )
-        md.signed.expires = self._get_expiry(period)
+        expiry = self._get_expiry(period)
 
-        # NOTE: Uses git to figure out if version bump is needed: this could
-        # be handled by caller (in yield) or be an argument
         diff_cmd = ["diff", "--exit-code", "--no-patch", "--", old_filename]
         if os.path.exists(old_filename) and self._git(diff_cmd) == 0:
-            md.signed.version += 1
+            version += 1
             # only snapshots need deleting (targets are deleted in snapshot())
             if role == "snapshot":
-                os.remove(old_filename)
+                remove_old = True
 
-        self._save(role, md)
+        with super().edit(role, expiry, version) as signed:
+            yield signed
 
-        self._git(["add", "--intent-to-add", self._get_filename(role, md.signed.version)])
+        if remove_old:
+            os.remove(old_filename)
 
 
 ### verify repository contents

@@ -67,7 +67,6 @@ class TestCLI(unittest.TestCase):
     @run_sub_tests_with_dataset(valid_commands)
     def test_basics(self, data: Data):
         """Test (mostly help) commands that work without metadata"""
-        self.maxDiff=None
         proc = self._run(data.argv, expected_out=None)
         self.assertStartsWith(proc.stdout, data.expect_out)
 
@@ -76,6 +75,7 @@ class TestCLI(unittest.TestCase):
         subprocess.run(["git", "init", "."], cwd=self.cwd, capture_output=True)
         subprocess.run(["git", "config", "--local", "user.name", "test"], cwd=self.cwd)
         subprocess.run(["git", "config", "--local", "user.email", "test@example.com"], cwd=self.cwd)
+        self.maxDiff=None
 
         # Create initial metadata
         self._run("edit root init")
