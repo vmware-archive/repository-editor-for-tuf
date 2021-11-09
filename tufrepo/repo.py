@@ -121,10 +121,25 @@ class Repository:
     def init_role(self, role:str, period: int):
         """Initialize new metadata"""
 
+    @contextmanager
+    def edit(self, role:str) -> Generator[Signed, None, None]:
+        """Context manager for editing a roles metadata"""
+
     def sign(self, role: str):
         """sign without modifying content, or removing existing signatures"""
         md = self._load(role)
         self._save(role, md, False)
+
+    @contextmanager
+    def _edit(self, role:str, expiry: datetime, version: int) -> Generator[Signed, None, None]:
+        """Helper function for edit() implementations"""
+        md = self._load(role)
+
+        yield md.signed
+
+        md.signed.expires = expiry
+        md.signed.version = version
+        self._save(role, md)
 
     def snapshot(self, current_targets: Dict[str, MetaFile]) -> Dict[str, MetaFile]:
         """Update snapshot and timestamp meta information
@@ -165,17 +180,6 @@ class Repository:
             logger.info("Snapshot update not needed")
 
         return removed_targets
-
-    @contextmanager
-    def edit(self, role:str, expiry: datetime, version: int) -> Generator[Signed, None, None]:
-        md = self._load(role)
-
-        yield md.signed
-
-        md.signed.expires = expiry
-        md.signed.version = version
-        self._save(role, md)
-
 
 ### git+file implementation of Repository
 class FilesystemRepository(Repository):
@@ -286,7 +290,7 @@ class FilesystemRepository(Repository):
             if role == "snapshot":
                 remove_old = True
 
-        with super().edit(role, expiry, version) as signed:
+        with super()._edit(role, expiry, version) as signed:
             yield signed
 
         if remove_old:

@@ -75,7 +75,6 @@ class TestCLI(unittest.TestCase):
         subprocess.run(["git", "init", "."], cwd=self.cwd, capture_output=True)
         subprocess.run(["git", "config", "--local", "user.name", "test"], cwd=self.cwd)
         subprocess.run(["git", "config", "--local", "user.email", "test@example.com"], cwd=self.cwd)
-        self.maxDiff=None
 
         # Create initial metadata
         self._run("edit root init")
