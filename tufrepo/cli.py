@@ -10,7 +10,7 @@ from tuf.api.metadata import DelegatedRole, Delegations, TargetFile
 
 from tufrepo import helpers
 from tufrepo import verifier
-from tufrepo.repo import FilesystemRepository
+from tufrepo.git_repo import GitRepository
 from tufrepo.keys import Keyring
 
 logger = logging.getLogger("tufrepo")
@@ -35,7 +35,7 @@ def cli(verbose: int = 0):
 @click.argument("roles", nargs=-1)
 def sign(roles: Tuple[str]):
     """Sign the given roles, using all usable keys in keyring"""
-    repo = FilesystemRepository(Keyring())
+    repo = GitRepository(Keyring())
     for role in roles:
         repo.sign(role)
 
@@ -50,7 +50,7 @@ def verify(root_hash: Optional[str] = None):
 @cli.command()
 def snapshot():
     """"""
-    repo = FilesystemRepository(Keyring())
+    repo = GitRepository(Keyring())
     repo.snapshot()
 
 
@@ -65,7 +65,7 @@ def touch(ctx: click.Context):
     """Mark ROLE as modified to force a new version"""
 
     role = get_role(ctx)
-    repo = FilesystemRepository(Keyring())
+    repo = GitRepository(Keyring())
     with repo.edit(role):
         pass
 
@@ -85,7 +85,7 @@ def init(ctx: click.Context, expiry: Tuple[int, str]):
     period = int(delta.total_seconds())
     role = get_role(ctx)
 
-    repo = FilesystemRepository(Keyring())
+    repo = GitRepository(Keyring())
     repo.init_role(role, period)
 
 
@@ -96,7 +96,7 @@ def init(ctx: click.Context, expiry: Tuple[int, str]):
 def set_threshold(ctx: click.Context, delegate: str, threshold: int):
     """Set the threshold of delegated role DELEGATE."""
     role = get_role(ctx)
-    repo = FilesystemRepository(Keyring())
+    repo = GitRepository(Keyring())
     with repo.edit(role) as signed:
         helpers.set_threshold(signed, delegate, threshold)
 
@@ -115,7 +115,7 @@ def set_expiry(ctx: click.Context, expiry: Tuple[int, str]):
     period = int(delta.total_seconds())
     role = get_role(ctx)
 
-    repo = FilesystemRepository(Keyring())
+    repo = GitRepository(Keyring())
     with repo.edit(role) as signed:
         # This should maybe be a repo feature? argument to edit?
         signed.unrecognized_fields["x-tufrepo-expiry-period"] = period
@@ -131,7 +131,7 @@ def add_key(ctx: click.Context, delegate: str):
     delegator = get_role(ctx)
     keyring = Keyring()
     key = keyring.generate_key()
-    repo = FilesystemRepository(keyring)
+    repo = GitRepository(keyring)
 
     with repo.edit(delegator) as signed:    
         helpers.add_key(signed, delegator, delegate, key.public)
@@ -145,7 +145,7 @@ def add_key(ctx: click.Context, delegate: str):
 def remove_key(ctx: click.Context, delegate: str, keyid: str):
     """Remove signing key from delegated role DELEGATE"""
     delegator = get_role(ctx)
-    repo = FilesystemRepository(Keyring())
+    repo = GitRepository(Keyring())
     with repo.edit(delegator) as signed:
         helpers.remove_key(signed, delegator, delegate, keyid)
 
@@ -156,7 +156,7 @@ def remove_key(ctx: click.Context, delegate: str, keyid: str):
 @click.argument("local-file")
 def add_target(ctx: click.Context, target_path: str, local_file: str):
     """Add a target to a Targets metadata role"""
-    repo = FilesystemRepository(Keyring())
+    repo = GitRepository(Keyring())
     with repo.edit(get_role(ctx)) as targets:
         targetfile = TargetFile.from_file(target_path, local_file)
         targets.targets[targetfile.path] = targetfile
@@ -167,7 +167,7 @@ def add_target(ctx: click.Context, target_path: str, local_file: str):
 @click.argument("target-path")
 def remove_target(ctx: click.Context, target_path: str):
     """Remove TARGET from a Targets role ROLE"""
-    repo = FilesystemRepository(Keyring())
+    repo = GitRepository(Keyring())
     with repo.edit(get_role(ctx)) as targets:
         del targets.targets[target_path]
 
@@ -186,7 +186,7 @@ def add_delegation(
     hash_prefixes: Tuple[str],
 ):
     """Delegate from ROLE to DELEGATE"""
-    repo = FilesystemRepository(Keyring())
+    repo = GitRepository(Keyring())
     paths = list(paths) if paths else None
     hash_prefixes = list(hash_prefixes) if hash_prefixes else None
 
@@ -204,6 +204,6 @@ def remove_delegation(
     ctx: click.Context,
     delegate: str,
 ):
-    repo = FilesystemRepository(Keyring())
+    repo = GitRepository(Keyring())
     with repo.edit(get_role(ctx)) as targets:
         del targets.delegations.roles[delegate]
