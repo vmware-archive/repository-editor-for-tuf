@@ -7,8 +7,10 @@ from datetime import timedelta
 from typing import List, Optional, OrderedDict, Tuple
 
 from tuf.api.metadata import DelegatedRole, Delegations, TargetFile
+
 from tufrepo import helpers
-from tufrepo.repo import FilesystemRepository, verify_repo
+from tufrepo import verifier
+from tufrepo.repo import FilesystemRepository
 from tufrepo.keys import Keyring
 
 logger = logging.getLogger("tufrepo")
@@ -41,7 +43,7 @@ def sign(roles: Tuple[str]):
 @click.option("--root-hash")
 def verify(root_hash: Optional[str] = None):
     """"""
-    verify_repo(root_hash)
+    verifier.verify_repo(root_hash)
     print(f"Keyring contains keys for [{', '.join(Keyring().keys())}].")
 
 
