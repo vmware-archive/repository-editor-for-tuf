@@ -35,62 +35,10 @@ from tuf.api.serialization.json import JSONSerializer
 from tuf.ngclient import Updater
 
 from tufrepo.filesystem_fetcher import FilesystemFetcher
+from tufrepo import helpers
 from tufrepo.keys import Keyring
 
 logger = logging.getLogger("tufrepo")
-
-
-###  Some editing helpers for Metadata
-
-def editor_init(role: str, expiry_date: datetime) -> Metadata:
-    if role == "root":
-        roles = {
-            "root": Role([], 1),
-            "targets": Role([], 1),
-            "snapshot": Role([], 1),
-            "timestamp": Role([], 1),
-        }
-        signed = Root(1, "1.0.19", expiry_date, {}, roles, True)
-    elif role == "timestamp":
-        signed = Timestamp(1, "1.0.19", expiry_date, MetaFile(1))
-    elif role == "snapshot":
-        signed = Snapshot(1, "1.0.19", expiry_date, {})
-    else:
-        signed = Targets(1, "1.0.19", expiry_date, {}, None)
-    
-    return Metadata(signed, OrderedDict())
-
-def editor_set_threshold(self: Signed, delegate: str, threshold: int):
-    role = None
-    if isinstance(self, Root):
-        role = self.roles.get(delegate)
-    elif isinstance(self, Targets):
-        if self.delegations is not None:
-            role = self.delegations.roles.get(delegate)
-    else:
-        raise ClickException(f"Not a delegator")
-
-    if role is None:
-        raise ClickException(f"Role {delegate} not found")
-    role.threshold = threshold
-
-def editor_add_key(self: Signed, delegator: str, delegate: str, key: Key):
-    if isinstance(self, Root) or isinstance(self, Targets):
-        try:
-            self.add_key(delegate, key)
-        except ValueError:
-            raise ClickException(f"{delegator} does not delegate to {delegate}")
-    else:
-        raise ClickException(f"{delegator} is not delegating metadata")
-
-def editor_remove_key(self: Signed, delegator: str, delegate: str, keyid: str):
-    if isinstance(self, Root) or isinstance(self, Targets):
-        try:
-            self.remove_key(delegate, keyid)
-        except ValueError:
-            raise ClickException(f"{delegator} does not delegate to {delegate}")
-    else:
-        raise ClickException(f"{delegator} is not delegating metadata")
 
 
 class Repository:
@@ -122,6 +70,7 @@ class Repository:
         """Initialize new metadata"""
 
     @contextmanager
+    @abstractmethod
     def edit(self, role:str) -> Generator[Signed, None, None]:
         """Context manager for editing a roles metadata"""
 
@@ -232,7 +181,7 @@ class FilesystemRepository(Repository):
         self._git(["add", "--intent-to-add", self._get_filename(role, md.signed.version)])
 
     def init_role(self, role:str, period: int):
-        md = editor_init(role, self._get_expiry(period))
+        md = helpers.init(role, self._get_expiry(period))
         md.signed.unrecognized_fields["x-tufrepo-expiry-period"] = period
         self._save(role, md)
 

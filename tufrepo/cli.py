@@ -7,7 +7,8 @@ from datetime import timedelta
 from typing import List, Optional, OrderedDict, Tuple
 
 from tuf.api.metadata import DelegatedRole, Delegations, TargetFile
-from tufrepo.repo import FilesystemRepository, editor_add_key, editor_remove_key, editor_set_threshold, verify_repo
+from tufrepo import helpers
+from tufrepo.repo import FilesystemRepository, verify_repo
 from tufrepo.keys import Keyring
 
 logger = logging.getLogger("tufrepo")
@@ -95,7 +96,7 @@ def set_threshold(ctx: click.Context, delegate: str, threshold: int):
     role = get_role(ctx)
     repo = FilesystemRepository(Keyring())
     with repo.edit(role) as signed:
-        editor_set_threshold(signed, delegate, threshold)
+        helpers.set_threshold(signed, delegate, threshold)
 
 
 @edit.command()
@@ -131,7 +132,7 @@ def add_key(ctx: click.Context, delegate: str):
     repo = FilesystemRepository(keyring)
 
     with repo.edit(delegator) as signed:    
-        editor_add_key(signed, delegator, delegate, key.public)
+        helpers.add_key(signed, delegator, delegate, key.public)
     keyring.store_key(delegate, key)
 
 
@@ -144,7 +145,7 @@ def remove_key(ctx: click.Context, delegate: str, keyid: str):
     delegator = get_role(ctx)
     repo = FilesystemRepository(Keyring())
     with repo.edit(delegator) as signed:
-        editor_remove_key(signed, delegator, delegate, keyid)
+        helpers.remove_key(signed, delegator, delegate, keyid)
 
 
 @edit.command()
