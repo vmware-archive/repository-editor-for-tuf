@@ -45,7 +45,7 @@ class TestCLI(unittest.TestCase):
 
         return proc
  
-    Data = NamedTuple("TestData", [("argv", str), ("expect_out", str)])
+    Data = NamedTuple("Data", [("argv", str), ("expect_out", str)])
     valid_commands: Dict[str, Data] = {
         "no args": Data("", "Usage: tufrepo [OPTIONS] COMMAND [ARGS]"),
         "help": Data("--help", "Usage: tufrepo [OPTIONS] COMMAND [ARGS]"),
@@ -151,7 +151,6 @@ class TestCLI(unittest.TestCase):
         self.assertEqual(set(os.listdir(self.cwd)), files)
 
         # Remove a target, update snapshot
-        self.maxDiff=None
         self._run("edit role1 remove-target files/file1.txt")
         self._run("snapshot")
         subprocess.run(["git", "commit", "-a", "-m", "Remove target"], cwd=self.cwd, capture_output=True)
