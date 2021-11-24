@@ -12,13 +12,11 @@ from typing import Dict, Generator
 
 from tuf.api.metadata import Metadata, MetaFile, Signed
 
-from tufrepo.keys import Keyring
+from tufrepo.librepo.keys import Keyring
 
 logger = logging.getLogger("tufrepo")
 
 class Repository(ABC):
-    def __init__(self, keyring: Keyring) -> None:
-        self.keyring = keyring
 
     def _sign_role(self, role: str, metadata: Metadata, clear_sigs: bool):
         if clear_sigs:
@@ -31,6 +29,12 @@ class Repository(ABC):
                 metadata.sign(key.signer, append=True)
         except KeyError:
             logger.info(f"No keys for role %s found in keyring", role)
+
+    @property
+    @abstractmethod
+    def keyring(self) -> Keyring:
+        """return a Keyring containing the private keys needed for signing"""
+        raise NotImplementedError
 
     @abstractmethod
     def _load(self, role:str) -> Metadata:

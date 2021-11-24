@@ -19,11 +19,20 @@ from tuf.api.serialization.json import JSONSerializer
 
 from tufrepo import helpers
 from tufrepo.librepo.repo import Repository
+from tufrepo.librepo.keys import Keyring
+from tufrepo.keys_impl import ComboKeyring
 
 logger = logging.getLogger("tufrepo")
 
 class GitRepository(Repository):
     """Manages loading, saving (signing) repository metadata in files stored in git"""
+
+    def __init__(self, keyring: ComboKeyring):
+        self._keyring = keyring
+
+    @property
+    def keyring(self) -> Keyring:
+        return self._keyring
 
     @staticmethod
     def _git(command: List[str]):

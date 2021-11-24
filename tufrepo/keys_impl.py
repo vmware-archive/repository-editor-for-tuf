@@ -16,27 +16,11 @@ from tuf.api.metadata import (
 )
 from typing import Dict, List, Set
 
+from tufrepo.librepo.keys import PrivateKey
+
 logger = logging.getLogger("tufrepo")
 
-
-class PrivateKey:
-    def __init__(self, key: Key, private: str) -> None:
-        self.public = key
-        self.private = private
-
-        keydict = copy.deepcopy(self.public.to_securesystemslib_key())
-        keydict["keyval"]["private"] = private
-        self.signer = SSlibSigner(keydict)
-
-    def __hash__(self):
-        return hash(self.public.keyid)
-
-    def __eq__(self, other):
-        if isinstance(other, PrivateKey):
-            return self.public.keyid == other.public.keyid
-        return NotImplemented
-
-class Keyring(Dict[str, Set[PrivateKey]]):
+class ComboKeyring(Dict[str, Set[PrivateKey]]):
     """ "Private key management for a repository
 
     On Keyring initialization private keys are loaded for all secrets in
