@@ -35,7 +35,13 @@ class Context(click.Context):
 def cli(ctx: Context, verbose: int, keyring: str):
     """Edit and sign TUF repository metadata
 
-    This tool expects to be run in a (git) metadata repository"""
+    This tool expects to be run in a directory with TUF metadata that is within
+    a git repository.
+
+    By default private keys are read in plaintext fom privkeys.json: this can
+    be changed with "--keyring" to use environment variables named
+    TUF_REPO_PRIVATE_KEY_<keyid> (useful in automation, like running in CI).
+    """
 
     logging.basicConfig(format="%(levelname)s:%(message)s")
     logger.setLevel(max(1, 10 * (5 - verbose)))
