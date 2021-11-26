@@ -89,7 +89,8 @@ class TestCLI(unittest.TestCase):
         proc = self._run("verify", expected_out=None)
         subprocess.run(["git", "commit", "-a", "-m", "Initial metadata"], cwd=self.cwd, capture_output=True)
 
-        self.assertStartsWith(proc.stdout, "Metadata with 0 delegated targets verified")
+        self.assertIn("Metadata with 0 delegated targets verified", proc.stdout)
+        self.assertIn("Keyring contains keys for [root, snapshot, targets, timestamp]", proc.stdout)
         files = {".git", "1.root.json", "1.snapshot.json", "1.targets.json", "privkeys.json", "timestamp.json"}
         self.assertEqual(set(os.listdir(self.cwd)), files)
 

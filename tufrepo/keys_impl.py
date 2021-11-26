@@ -1,27 +1,26 @@
 # Copyright 2021 VMware, Inc.
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-import copy
 import glob
 import json
 import logging
 import os
+
 from securesystemslib.keys import generate_ed25519_key
-from securesystemslib.signer import SSlibSigner
 from tuf.api.metadata import (
     Key,
     Metadata,
     Root,
     Targets,
 )
-from typing import Dict, List, Set
+from typing import DefaultDict, Dict, Set
 
 from tufrepo.librepo.keys import PrivateKey
 
 logger = logging.getLogger("tufrepo")
 
-class InsecureFileKeyring(Dict[str, Set[PrivateKey]]):
-    """ "Private key management in plain text
+class InsecureFileKeyring(DefaultDict[str, Set[PrivateKey]]):
+    """ Private key management in plain text file
 
     loads secrets from plain text privkeys.json file for all delegating roles
     in this repository. This currently loads all delegating metadata to find
@@ -34,11 +33,12 @@ class InsecureFileKeyring(Dict[str, Set[PrivateKey]]):
         # Load a private key from env var or the private key file
         private = self._privkeyfile.get(key.keyid)
         if private:
-            if rolename not in self:
-                self[rolename] = set()
             self[rolename].add(PrivateKey(key, private))
 
     def __init__(self) -> None:
+        # defaultdict with an empy set as initial value
+        super().__init__(set)
+
         try:
             with open("privkeys.json", "r") as f:
                 self._privkeyfile: Dict[str, str] = json.loads(f.read())
@@ -83,8 +83,6 @@ class InsecureFileKeyring(Dict[str, Set[PrivateKey]]):
         "Write private key to privkeys.json"
 
         # Add new key to keyring
-        if role not in self:
-            self[role] = set()
         self[role].add(key)
 
         # write private key to privkeys file
@@ -115,11 +113,12 @@ class EnvVarKeyring(Dict[str, Set[PrivateKey]]):
         # Load a private key from env var or the private key file
         private = os.getenv(f"TUF_REPO_PRIVATE_KEY_{key.keyid}")
         if private:
-            if rolename not in self:
-                self[rolename] = set()
             self[rolename].add(PrivateKey(key, private))
 
     def __init__(self) -> None:
+        # defaultdict with an empy set as initial value
+        super().__init__(set)
+
         # find all delegating roles in the repository
         roles: Dict[str, int] = {}
         for filename in glob.glob("*.*.json"):
