@@ -101,7 +101,7 @@ class InsecureFileKeyring(DefaultDict[str, Set[PrivateKey]]):
             role,
         )
 
-class EnvVarKeyring(Dict[str, Set[PrivateKey]]):
+class EnvVarKeyring(DefaultDict[str, Set[PrivateKey]]):
     """ "Private key management using environment variables
     
     Load private keys from env variables (TUF_REPO_PRIVATE_KEY_*) for all
