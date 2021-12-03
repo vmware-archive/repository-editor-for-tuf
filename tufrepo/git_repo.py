@@ -14,7 +14,7 @@ from typing import Dict, Generator, List, Optional
 
 from click.exceptions import ClickException
 from securesystemslib.exceptions import StorageError
-from tuf.api.metadata import Metadata, MetaFile, Signed
+from tuf.api.metadata import Metadata, MetaFile, Signed, TargetFile
 from tuf.api.serialization.json import JSONSerializer
 
 from tufrepo import helpers
@@ -143,3 +143,22 @@ class GitRepository(Repository):
 
         if remove_old:
             os.remove(old_filename)
+
+    def add_target(self, role, target_in_repo: bool, target_path: str, local_file: str):
+        """Adds a file to Targets metadata as a target
+
+        Optionally adds the target file (and hash prefixed symlinks) to git as well.
+        """
+        with self.edit(role) as targets:
+            targetfile = TargetFile.from_file(target_path, local_file)
+            targets.targets[targetfile.path] = targetfile
+            if target_in_repo:
+                self._git(["add", "--intent-to-add", local_file])
+                # create hash-symlinks for target file
+                for h in targetfile.hashes.values():
+                    dir, src_file = os.path.split(local_file)
+                    dst = os.path.join(dir, f"{h}.{src_file}")
+                    if os.path.islink(dst):
+                        os.remove(dst)
+                    os.symlink(src_file, dst)
+                    self._git(["add", "--intent-to-add", dst])

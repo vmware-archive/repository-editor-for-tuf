@@ -124,13 +124,19 @@ class TestCLI(unittest.TestCase):
         files.add("2.snapshot.json")
         self.assertEqual(set(os.listdir(self.cwd)), files)
 
-        # Add target to role1
-        self._run("edit role1 add-target files/file1.txt timestamp.json")
+        # Add target to role1 (don't add file to git)
+        self._run("edit role1 add-target --no-target-in-repo files/timestamp.json timestamp.json")
+
+        # Add target to role1 (also add target and hash-prefixed symlinks to git)
+        with open(f"{self.cwd}/new-target", "w") as f:
+            f.write("hello")
+        self._run("edit role1 add-target files/new-target ./new-target")
+
         proc = self._run("verify", expected_out=None)
         subprocess.run(["git", "commit", "-a", "-m", "Add target"], cwd=self.cwd, capture_output=True)
 
         self.assertStartsWith(proc.stdout, "Metadata with 1 delegated targets verified")
-        files.add("2.role1.json")
+        files |= { "2.role1.json", "new-target", "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824.new-target" }
         self.assertEqual(set(os.listdir(self.cwd)), files)
 
         # update snapshot
@@ -152,7 +158,8 @@ class TestCLI(unittest.TestCase):
         self.assertEqual(set(os.listdir(self.cwd)), files)
 
         # Remove a target, update snapshot
-        self._run("edit role1 remove-target files/file1.txt")
+        proc = self._run("edit role1 remove-target files/new-target", expected_out=None)
+        self.assertStartsWith(proc.stdout, "Removed files/new-target")
         self._run("snapshot")
         subprocess.run(["git", "commit", "-a", "-m", "Remove target"], cwd=self.cwd, capture_output=True)
 

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import List, Optional, OrderedDict, Tuple
 
-from tuf.api.metadata import DelegatedRole, Delegations, TargetFile
+from tuf.api.metadata import DelegatedRole, Delegations
 
 from tufrepo import helpers
 from tufrepo import verifier
@@ -175,14 +175,18 @@ def remove_key(ctx: Context, delegate: str, keyid: str):
 
 @edit.command()
 @click.pass_context
+@click.option("--target-in-repo/--no-target-in-repo", default=True)
 @click.argument("target-path")
 @click.argument("local-file")
-def add_target(ctx: Context, target_path: str, local_file: str):
+def add_target(
+    ctx: Context,
+    target_in_repo: bool,
+    target_path: str,
+    local_file: str,
+):
     """Add a target to a Targets metadata role"""
     repo = GitRepository(ctx.obj.keyring)
-    with repo.edit(ctx.obj.role) as targets:
-        targetfile = TargetFile.from_file(target_path, local_file)
-        targets.targets[targetfile.path] = targetfile
+    repo.add_target(ctx.obj.role, target_in_repo, target_path, local_file)
 
 
 @edit.command()
@@ -193,6 +197,8 @@ def remove_target(ctx: Context, target_path: str):
     repo = GitRepository(ctx.obj.keyring)
     with repo.edit(ctx.obj.role) as targets:
         del targets.targets[target_path]
+    print(f"Removed {target_path} from {ctx.obj.role}.")
+    print("Actual target files have not been removed")
 
 
 @edit.command()
