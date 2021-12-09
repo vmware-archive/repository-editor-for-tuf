@@ -24,7 +24,6 @@ experimental and unstable:
    single command
  * Private key management is minimal: removing keys requires editing a file,
    using an existing key is not supported
- * target file handling is not complete: in particular hash prefixes are not generated
  * No releases or packages are available
 
 ## How it works
@@ -63,7 +62,7 @@ The 'verify' command verifies repository validity.
 All of the metadata is stored in git and the git repository is meant to be
 shareable publicly. This means private keys must be stored elsewhere.
 
-tufrepo can currently read private key secrets from two places
+tufrepo can currently read private key secrets f is now inrom two places
  * privkeys.json in the repo directory (this does not get committed to git).
    Encrypted keys are not yet supported.
  * environment variables. This is useful when running tufrepo on CI and reading
@@ -135,8 +134,8 @@ while helps keep track of changes so far.
 
 ### Target info update example:
 
-    # Developer uploads a file (sign with role1 key)
-    tufrepo edit role1 add-target files/file1.txt /path/to/file1.txt
+    # Developer adds target "files/file1.txt" (sign with role1 key)
+    tufrepo edit role1 add-target files/file1.txt ../targets/files/file1.txt
 
     # Update snapshot/timestamp contents (sign with snapshot/timestamp key)
     tufrepo snapshot
