@@ -52,6 +52,31 @@ def cli(ctx: Context, verbose: int, keyring: str):
         keyring_obj = InsecureFileKeyring()
     ctx.obj = AppData(keyring_obj)
 
+@cli.command()
+@click.pass_context
+def init(ctx: Context):
+    """Initialize a repository
+
+    All metadata will be assigned expiry period of 365 days: use
+    'edit ROLE set-expiry' to change. A key will be generated for each role
+    and stored in the keyring."""
+    repo = GitRepository(ctx.obj.keyring)
+    # Use expiry period of 1 year for everything
+    period = int(timedelta(days=365).total_seconds())
+
+    repo = GitRepository(ctx.obj.keyring)
+    repo.init_role("root", period)
+
+    with repo.edit("root") as root:
+        for role in ["root", "timestamp", "snapshot", "targets"]:
+            key = ctx.obj.keyring.generate_key()
+            root.add_key(role, key.public)
+            ctx.obj.keyring.store_key(role, key)
+
+    repo.init_role("timestamp", period)
+    repo.init_role("snapshot", period)
+    repo.init_role("targets", period)
+    repo.snapshot()
 
 @cli.command()
 @click.pass_context

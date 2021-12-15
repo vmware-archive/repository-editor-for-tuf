@@ -70,7 +70,7 @@ class TestCLI(unittest.TestCase):
         proc = self._run(data.argv, expected_out=None)
         self.assertStartsWith(proc.stdout, data.expect_out)
 
-    def test_repo_management(self):
+    def test_repo_manual_init(self):
         """Test (roughly) the tutorial from README"""
         subprocess.run(["git", "init", "."], cwd=self.cwd, capture_output=True)
         subprocess.run(["git", "config", "--local", "user.name", "test"], cwd=self.cwd)
@@ -86,6 +86,22 @@ class TestCLI(unittest.TestCase):
         self._run("edit snapshot init")
         self._run("edit targets init")
         self._run("snapshot")
+        proc = self._run("verify", expected_out=None)
+        subprocess.run(["git", "commit", "-a", "-m", "Initial metadata"], cwd=self.cwd, capture_output=True)
+
+        self.assertIn("Metadata with 0 delegated targets verified", proc.stdout)
+        self.assertIn("Keyring contains keys for [root, snapshot, targets, timestamp]", proc.stdout)
+        files = {".git", "1.root.json", "1.snapshot.json", "1.targets.json", "privkeys.json", "timestamp.json"}
+        self.assertEqual(set(os.listdir(self.cwd)), files)
+
+    def test_repo_management(self):
+        """Test (roughly) the tutorial from README"""
+        subprocess.run(["git", "init", "."], cwd=self.cwd, capture_output=True)
+        subprocess.run(["git", "config", "--local", "user.name", "test"], cwd=self.cwd)
+        subprocess.run(["git", "config", "--local", "user.email", "test@example.com"], cwd=self.cwd)
+
+        # Create initial metadata
+        self._run("init")
         proc = self._run("verify", expected_out=None)
         subprocess.run(["git", "commit", "-a", "-m", "Initial metadata"], cwd=self.cwd, capture_output=True)
 

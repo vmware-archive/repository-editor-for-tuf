@@ -20,8 +20,6 @@ TUF repositories for demo purposes.
 It is also at early stages of development and should be considered
 experimental and unstable:
  * Testing is minimal
- * There's no "repo init" command yet to handle creating a repository with a
-   single command
  * Private key management is minimal: removing keys requires editing a file,
    using an existing key is not supported
  * No releases or packages are available
@@ -40,6 +38,9 @@ are automatically added to git. Git is used for a few reasons:
    is possible
 
 ### Commands are used to edit metadata
+
+'init' command initializes a new repository: the same results can be achieved
+with individually editing each top level role, 'init' is just a short cut.
 
 The 'edit' command modifies a single metadata file (there are many
 sub-commands, see examples). The 'snapshot' command updates the repository
@@ -95,28 +96,22 @@ while helps keep track of changes so far.
     git init .
     echo "privkeys.json" > .gitignore
 
-    # Create root metadata
-    tufrepo edit root init
-
-    # Add keys for top-level roles, store private keys in privkeys.json
-    # (root now gets signed with both root keys)
-    tufrepo edit root add-key root
-    tufrepo edit root add-key root
-    tufrepo edit root set-threshold root 2
-    tufrepo edit root add-key snapshot
-    tufrepo edit root add-key timestamp
-    tufrepo edit root add-key targets
-
-    # Create other top-level metadata (signed with timestamp/snapshot/targets keys)
-    tufrepo edit timestamp init
-    tufrepo edit snapshot init
-    tufrepo edit targets init
-
-    # Update snapshot/timestamp contents (sign with snapshot/timestamp keys)
-    tufrepo snapshot
+    # Create top level metadata
+    tufrepo init
 
     git commit -a -m "initial top-level metadata"
 
+### Editing metadata
+
+    # shorter expiry for timestamp
+    tufrepo edit timestamp set-expiry 12 hours
+
+    # require two of three root keys
+    tufrepo edit root add-key root
+    tufrepo edit root add-key root
+    tufrepo edit root set-threshold root 2
+
+    git commit -a -m "timestamp expiry & more root keys"
 
 ### Delegation
 
