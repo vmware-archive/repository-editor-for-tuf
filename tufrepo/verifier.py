@@ -35,7 +35,7 @@ def verify_repo(root_hash: Optional[str]):
     fsfetcher = FilesystemFetcher({"http://localhost/fakeurl/": "."})
     try:
         updater = Updater(
-            repository_dir=client_dir.name,
+            metadata_dir=client_dir.name,
             metadata_base_url="http://localhost/fakeurl/",
             target_base_url="http://localhost/fakeurl/",
             fetcher=fsfetcher,
