@@ -9,7 +9,7 @@ import time
 
 from typing import Dict
 
-from tuf import exceptions, settings
+from tuf.api import exceptions
 from tuf.ngclient.fetcher import FetcherInterface
 
 # Globals
@@ -36,7 +36,7 @@ class FilesystemFetcher(FetcherInterface):
                 try:
                     return open(f"{dir}/{url[len(url_prefix):]}", "rb")
                 except FileNotFoundError:
-                    raise exceptions.FetcherHTTPError("File not found", 404)
-        raise exceptions.FetcherHTTPError(
-            "URL {url} not prefixed with a known prefix", 404
+                    raise exceptions.DownloadHTTPError("File not found", 404)
+        raise exceptions.DownloadHTTPError(
+            f"URL {url} not prefixed with a known prefix", 404
         )

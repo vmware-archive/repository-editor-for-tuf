@@ -47,10 +47,9 @@ def cli(ctx: Context, verbose: int, keyring: str):
     logger.setLevel(max(1, 10 * (5 - verbose)))
 
     if keyring == "env":
-        keyring_obj = EnvVarKeyring()
+        ctx.obj = AppData(EnvVarKeyring())
     else:
-        keyring_obj = InsecureFileKeyring()
-    ctx.obj = AppData(keyring_obj)
+        ctx.obj = AppData(InsecureFileKeyring())
 
 @cli.command()
 @click.pass_context
@@ -241,14 +240,14 @@ def add_delegation(
 ):
     """Delegate from ROLE to DELEGATE"""
     repo = GitRepository(ctx.obj.keyring)
-    paths = list(paths) if paths else None
-    hash_prefixes = list(hash_prefixes) if hash_prefixes else None
+    _paths = list(paths) if paths else None
+    _prefixes = list(hash_prefixes) if hash_prefixes else None
 
     with repo.edit(ctx.obj.role) as targets:
         if targets.delegations is None:
             targets.delegations = Delegations({}, OrderedDict())
 
-        role = DelegatedRole(delegate, [], 1, terminating, paths, hash_prefixes)
+        role = DelegatedRole(delegate, [], 1, terminating, _paths, _prefixes)
         targets.delegations.roles[role.name] = role
 
 @edit.command()

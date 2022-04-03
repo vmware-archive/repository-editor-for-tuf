@@ -7,7 +7,7 @@ from typing import List, Optional, Tuple
 
 from click.exceptions import ClickException
 from securesystemslib.hash import digest_fileobject
-from tuf.exceptions import RepositoryError
+from tuf.api.exceptions import RepositoryError
 from tuf.api.metadata import Snapshot, Targets
 from tuf.ngclient import Updater
 

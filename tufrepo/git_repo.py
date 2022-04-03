@@ -14,7 +14,16 @@ from typing import Dict, Generator, List, Optional
 
 from click.exceptions import ClickException
 from securesystemslib.exceptions import StorageError
-from tuf.api.metadata import Metadata, MetaFile, Signed, TargetFile
+from tuf.api.metadata import (
+    Metadata,
+    MetaFile,
+    Root,
+    Signed,
+    Snapshot,
+    TargetFile,
+    Targets,
+    Timestamp,
+)
 from tuf.api.serialization.json import JSONSerializer
 
 from tufrepo import helpers
@@ -22,6 +31,14 @@ from tufrepo.librepo.repo import Repository
 from tufrepo.librepo.keys import Keyring
 
 logger = logging.getLogger("tufrepo")
+
+_signed_init = {
+    Root.type: Root,
+    Snapshot.type: Snapshot,
+    Targets.type: Targets,
+    Timestamp.type: Timestamp,
+}
+
 
 class GitRepository(Repository):
     """Manages loading, saving (signing) repository metadata in files stored in git"""
@@ -64,7 +81,7 @@ class GitRepository(Repository):
 
             return f"{version}.{role}.json"
 
-    def _load(self, role:str) -> Metadata:
+    def _load(self, role: str) -> Metadata:
         fname = self._get_filename(role)
         try:
             return Metadata.from_file(fname)
@@ -77,10 +94,13 @@ class GitRepository(Repository):
         fname = self._get_filename(role, md.signed.version)
         md.to_file(fname, JSONSerializer())
 
-        self._git(["add", "--intent-to-add", self._get_filename(role, md.signed.version)])
+        self._git(
+            ["add", "--intent-to-add", self._get_filename(role, md.signed.version)]
+        )
 
-    def init_role(self, role:str, period: int):
-        md = helpers.init(role, self._get_expiry(period))
+    def init_role(self, role: str, period: int):
+        signed_init = _signed_init.get(role, Targets)
+        md = Metadata(signed_init(expires=self._get_expiry(period)))
         md.signed.unrecognized_fields["x-tufrepo-expiry-period"] = period
         self._save(role, md)
 
@@ -101,7 +121,7 @@ class GitRepository(Repository):
             if keyname in ["root", "snapshot", "timestamp"]:
                 continue
             keyname = f"{keyname}.json"
-            
+
             curr_role = targets_roles.get(keyname)
             if not curr_role or version > curr_role.version:
                 targets_roles[keyname] = MetaFile(version)
@@ -116,7 +136,7 @@ class GitRepository(Repository):
                 pass
 
     @contextmanager
-    def edit(self, role:str) -> Generator[Signed, None, None]:
+    def edit(self, role: str) -> Generator[Signed, None, None]:
         md = self._load(role)
         version = md.signed.version
         old_filename = self._get_filename(role, version)
