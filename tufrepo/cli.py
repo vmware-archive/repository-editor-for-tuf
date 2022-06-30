@@ -63,7 +63,6 @@ def init(ctx: Context):
     # Use expiry period of 1 year for everything
     period = int(timedelta(days=365).total_seconds())
 
-    repo = GitRepository(ctx.obj.keyring)
     repo.init_role("root", period)
 
     with repo.edit("root") as root:
