@@ -1,0 +1,10 @@
+# Virtual environment common names
+venv
+.venv
+env
+.env
+
+# global file patterns
+.vscode
+*.pyc
+*.egg-info
