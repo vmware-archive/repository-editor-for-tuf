@@ -21,6 +21,12 @@ logger = logging.getLogger("tufrepo")
 class AppData:
     keyring: Keyring
     role: str = None
+    repo: GitRepository = None
+
+    def __init__(self, keyring: Keyring) -> None:
+        self.keyring = keyring
+        self.repo = GitRepository(self.keyring)
+
 
 class Context(click.Context):
     """click.Context where obj type is Appdata"""
@@ -59,31 +65,29 @@ def init(ctx: Context):
     All metadata will be assigned expiry period of 365 days: use
     'edit ROLE set-expiry' to change. A key will be generated for each role
     and stored in the keyring."""
-    repo = GitRepository(ctx.obj.keyring)
     # Use expiry period of 1 year for everything
     period = int(timedelta(days=365).total_seconds())
 
-    repo.init_role("root", period)
+    ctx.obj.repo.init_role("root", period)
 
-    with repo.edit("root") as root:
+    with ctx.obj.repo.edit("root") as root:
         for role in ["root", "timestamp", "snapshot", "targets"]:
             key = ctx.obj.keyring.generate_key()
             root.add_key(role, key.public)
             ctx.obj.keyring.store_key(role, key)
 
-    repo.init_role("timestamp", period)
-    repo.init_role("snapshot", period)
-    repo.init_role("targets", period)
-    repo.snapshot()
+    ctx.obj.repo.init_role("timestamp", period)
+    ctx.obj.repo.init_role("snapshot", period)
+    ctx.obj.repo.init_role("targets", period)
+    ctx.obj.repo.snapshot()
 
 @cli.command()
 @click.pass_context
 @click.argument("roles", nargs=-1)
 def sign(ctx: Context, roles: Tuple[str]):
     """Sign the given roles, using all usable keys in keyring"""
-    repo = GitRepository(ctx.obj.keyring)
     for role in roles:
-        repo.sign(role)
+        ctx.obj.repo.sign(role)
 
 @cli.command()
 @click.pass_context
@@ -98,8 +102,7 @@ def verify(ctx: Context, root_hash: Optional[str] = None):
 @click.pass_context
 def snapshot(ctx: Context):
     """"""
-    repo = GitRepository(ctx.obj.keyring)
-    repo.snapshot()
+    ctx.obj.repo.snapshot()
 
 
 @cli.group()
