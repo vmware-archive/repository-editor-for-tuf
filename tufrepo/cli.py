@@ -5,7 +5,7 @@ import click
 import logging
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import List, Optional, OrderedDict, Tuple
+from typing import Optional, Tuple
 
 from tuf.api.metadata import DelegatedRole, Delegations
 
@@ -241,7 +241,7 @@ def add_delegation(
 
     with ctx.obj.repo.edit(ctx.obj.role) as targets:
         if targets.delegations is None:
-            targets.delegations = Delegations({}, OrderedDict())
+            targets.delegations = Delegations({}, {})
 
         role = DelegatedRole(delegate, [], 1, terminating, _paths, _prefixes)
         targets.delegations.roles[role.name] = role
