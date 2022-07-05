@@ -34,6 +34,10 @@ class Context(click.Context):
         super().__init__()
         self.obj: AppData
 
+
+# -------------------------------- cli commands --------------------------------
+
+
 @click.group()
 @click.pass_context
 @click.option("-v", "--verbose", count=True, default=0)
@@ -103,6 +107,9 @@ def verify(ctx: Context, root_hash: Optional[str] = None):
 def snapshot(ctx: Context):
     """"""
     ctx.obj.repo.snapshot()
+
+
+# ------------------------------- edit commands --------------------------------
 
 
 @cli.group()
