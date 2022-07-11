@@ -3,11 +3,17 @@
 
 import click
 import logging
+import math
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Optional, Tuple
 
-from tuf.api.metadata import DelegatedRole, Delegations, Targets
+from tuf.api.metadata import(
+    DelegatedRole,
+    Delegations,
+    SuccinctRoles,
+    Targets
+)
 
 from tufrepo import helpers
 from tufrepo import verifier
@@ -231,29 +237,73 @@ def remove_target(ctx: Context, target_path: str):
 
 @edit.command()
 @click.pass_context
-@click.argument("delegate")
 @click.option("--terminating/--non-terminating", default=False)
 @click.option("--path", "paths", multiple=True)
 @click.option("--hash-prefix", "hash_prefixes", multiple=True)
+@click.option("--succinct", "bin_amount", type=int)
+@click.argument("delegate")
 def add_delegation(
     ctx: Context,
-    delegate: str,
-    terminating: bool,
+    terminating: Optional[bool],
     paths: Tuple[str],
     hash_prefixes: Tuple[str],
+    bin_amount: Optional[int],
+    delegate: str,
 ):
-    """Delegate from ROLE to DELEGATE"""
+    """Delegate from ROLE to DELEGATE.
 
-    _paths = list(paths) if paths else None
-    _prefixes = list(hash_prefixes) if hash_prefixes else None
+    There are two modes for this command:
+    - add a new delegated role in ROLE.
+    - add а succinct hash bin delegation
+
+    If you want to add a new delegated role then the new role will have a name
+    "DELEGATE" and you can use the three options: "terminating", "path" and
+    "hash-prefix".
+
+    IF you want to add a new succinct hash bin delegation then you should use
+    the "succinct" option and you are not allowed to use any of the other three
+    options.
+    For the "succinct" option you should provide a number representing the
+    number of bins. It MUST be a power of 2.
+    Finally, if you add a new succinct hash bin delegation then "DELEGATE" will
+    be the name prefix of all bins.
+    """
+
+    sum_lengths_paths_and_prefixes = len(paths) + len(hash_prefixes)
+    # sum_lengths_paths_and_prefixes must be at least 1 if a user wants to
+    # delegate to a new role as either paths or hash_prefixes must be set.
+    if bin_amount is not None and sum_lengths_paths_and_prefixes > 0:
+        raise ValueError(
+            "Not allowed to set delegated role options and the succinct option"
+        )
 
     targets: Targets
     with ctx.obj.repo.edit(ctx.obj.role) as targets:
-        if targets.delegations is None:
-            targets.delegations = Delegations({}, {})
+        # Add delegated role "delegate"
+        if sum_lengths_paths_and_prefixes > 0:
+            if (
+                targets.delegations is None
+                or targets.delegations.succinct_roles is not None
+            ):
+                targets.delegations = Delegations({}, {})
 
-        role = DelegatedRole(delegate, [], 1, terminating, _paths, _prefixes)
-        targets.delegations.roles[role.name] = role
+            _paths = list(paths) if paths else None
+            _prefixes = list(hash_prefixes) if hash_prefixes else None
+            role = DelegatedRole(delegate, [], 1, terminating, _paths, _prefixes)
+            targets.delegations.roles[role.name] = role
+
+        # Add succinct hash bin delegation.
+        # In this case "delegate" is the prefix of all bins.
+        elif bin_amount is not None:
+            if bin_amount < 2:
+                raise ValueError("Succinct number must be at least 2")
+            if bin_amount % 2 != 0:
+                raise ValueError("Succinct number must be a power of 2")
+
+            bit_length = int(math.log2(bin_amount))
+            succinct_roles =  SuccinctRoles([], 1, bit_length, delegate)
+            targets.delegations = Delegations({}, None, succinct_roles)
+
 
 @edit.command()
 @click.pass_context
