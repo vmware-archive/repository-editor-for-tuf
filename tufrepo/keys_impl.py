@@ -24,12 +24,16 @@ logger = logging.getLogger("tufrepo")
 class Keyring(DefaultDict[str, Set[PrivateKey]], metaclass=abc.ABCMeta):
     """A base class for the private keyring management implementations."""
 
+    def __init__(self):
+        super().__init__(set)
+        self._load_private_keys()
+
     @abc.abstractmethod
     def _load_key(self, rolename: str, key: Key) -> None:
         """Load the private key of a given role and add it to the "key" object."""
         raise NotImplementedError
 
-    def load_private_keys(self):
+    def _load_private_keys(self):
         """Loads secrets for all delegating roles in this repository by using
         self._load_key(). This currently loads all delegating metadata to
         findthe public keys."""
@@ -77,8 +81,6 @@ class InsecureFileKeyring(Keyring):
 
     def __init__(self) -> None:
         # defaultdict with an empy set as initial value
-        super().__init__(set)
-
         try:
             with open("privkeys.json", "r") as f:
                 self._privkeyfile: Dict[str, str] = json.loads(f.read())
@@ -87,7 +89,7 @@ class InsecureFileKeyring(Keyring):
         except FileNotFoundError:
             self._privkeyfile = {}
 
-        super().load_private_keys()
+        super().__init__()
         logger.info("Loaded keys for %d roles from privkeys.json", len(self))
 
     def generate_key(self) -> PrivateKey:
@@ -135,7 +137,5 @@ class EnvVarKeyring(Keyring):
 
     def __init__(self) -> None:
         # defaultdict with an empy set as initial value
-        super().__init__(set)
-
-        super().load_private_keys()
+        super().__init__()
         logger.info("Loaded keys for %d roles from env vars", len(self))
