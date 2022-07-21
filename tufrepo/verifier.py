@@ -7,7 +7,7 @@ from typing import List, Optional, Tuple
 
 from click.exceptions import ClickException
 from securesystemslib.hash import digest_fileobject
-from tuf.api.exceptions import RepositoryError
+from tuf.api.exceptions import ExpiredMetadataError, RepositoryError
 from tuf.api.metadata import Snapshot, Targets
 from tuf.ngclient import Updater
 
@@ -80,11 +80,15 @@ def verify_repo(root_hash: Optional[str]):
                     delegators.append(
                         (role.name, updater._trusted_set[role.name].signed)
                     )
+                except ExpiredMetadataError as e:
+                    logger.warning(
+                        "Delegated target %s has expired",
+                        role.name
+                    )
                 except RepositoryError as e:
                     raise ClickException(
-                        "Delegated target fails to validate"
+                        f"Delegated target {role.name} fails to validate"
                     ) from e
-
     deleg_count = len(updater._trusted_set) - 4
 
     print(f"Metadata with {deleg_count} delegated targets verified")
