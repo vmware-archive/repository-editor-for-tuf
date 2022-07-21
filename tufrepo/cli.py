@@ -5,7 +5,7 @@ import click
 import logging
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import List, Optional, OrderedDict, Tuple
+from typing import Optional, Tuple
 
 from tuf.api.metadata import DelegatedRole, Delegations
 
@@ -21,12 +21,22 @@ logger = logging.getLogger("tufrepo")
 class AppData:
     keyring: Keyring
     role: str = None
+    repo: GitRepository = None
+
+    def __init__(self, keyring: Keyring) -> None:
+        self.keyring = keyring
+        self.repo = GitRepository(self.keyring)
+
 
 class Context(click.Context):
     """click.Context where obj type is Appdata"""
     def __init__(self):
         super().__init__()
         self.obj: AppData
+
+
+# -------------------------------- cli commands --------------------------------
+
 
 @click.group()
 @click.pass_context
@@ -59,32 +69,29 @@ def init(ctx: Context):
     All metadata will be assigned expiry period of 365 days: use
     'edit ROLE set-expiry' to change. A key will be generated for each role
     and stored in the keyring."""
-    repo = GitRepository(ctx.obj.keyring)
     # Use expiry period of 1 year for everything
     period = int(timedelta(days=365).total_seconds())
 
-    repo = GitRepository(ctx.obj.keyring)
-    repo.init_role("root", period)
+    ctx.obj.repo.init_role("root", period)
 
-    with repo.edit("root") as root:
+    with ctx.obj.repo.edit("root") as root:
         for role in ["root", "timestamp", "snapshot", "targets"]:
             key = ctx.obj.keyring.generate_key()
             root.add_key(role, key.public)
             ctx.obj.keyring.store_key(role, key)
 
-    repo.init_role("timestamp", period)
-    repo.init_role("snapshot", period)
-    repo.init_role("targets", period)
-    repo.snapshot()
+    ctx.obj.repo.init_role("timestamp", period)
+    ctx.obj.repo.init_role("snapshot", period)
+    ctx.obj.repo.init_role("targets", period)
+    ctx.obj.repo.snapshot()
 
 @cli.command()
 @click.pass_context
 @click.argument("roles", nargs=-1)
 def sign(ctx: Context, roles: Tuple[str]):
     """Sign the given roles, using all usable keys in keyring"""
-    repo = GitRepository(ctx.obj.keyring)
     for role in roles:
-        repo.sign(role)
+        ctx.obj.repo.sign(role)
 
 @cli.command()
 @click.pass_context
@@ -99,8 +106,10 @@ def verify(ctx: Context, root_hash: Optional[str] = None):
 @click.pass_context
 def snapshot(ctx: Context):
     """"""
-    repo = GitRepository(ctx.obj.keyring)
-    repo.snapshot()
+    ctx.obj.repo.snapshot()
+
+
+# ------------------------------- edit commands --------------------------------
 
 
 @cli.group()
@@ -114,9 +123,7 @@ def edit(ctx: Context, role: str):
 @click.pass_context
 def touch(ctx: Context):
     """Mark ROLE as modified to force a new version"""
-
-    repo = GitRepository(ctx.obj.keyring)
-    with repo.edit(ctx.obj.role):
+    with ctx.obj.repo.edit(ctx.obj.role):
         pass
 
 @edit.command()
@@ -133,9 +140,7 @@ def init(ctx: Context, expiry: Tuple[int, str]):
     tufrepo edit root init --expiry 52 weeks"""
     delta = timedelta(**{expiry[1]: expiry[0]})
     period = int(delta.total_seconds())
-
-    repo = GitRepository(ctx.obj.keyring)
-    repo.init_role(ctx.obj.role, period)
+    ctx.obj.repo.init_role(ctx.obj.role, period)
 
 
 @edit.command()
@@ -144,8 +149,7 @@ def init(ctx: Context, expiry: Tuple[int, str]):
 @click.argument("threshold", type=int)
 def set_threshold(ctx: Context, delegate: str, threshold: int):
     """Set the threshold of delegated role DELEGATE."""
-    repo = GitRepository(ctx.obj.keyring)
-    with repo.edit(ctx.obj.role) as signed:
+    with ctx.obj.repo.edit(ctx.obj.role) as signed:
         helpers.set_threshold(signed, delegate, threshold)
 
 
@@ -162,8 +166,7 @@ def set_expiry(ctx: Context, expiry: Tuple[int, str]):
     delta = timedelta(**{expiry[1]: expiry[0]})
     period = int(delta.total_seconds())
 
-    repo = GitRepository(ctx.obj.keyring)
-    with repo.edit(ctx.obj.role) as signed:
+    with ctx.obj.repo.edit(ctx.obj.role) as signed:
         # This should maybe be a repo feature? argument to edit?
         signed.unrecognized_fields["x-tufrepo-expiry-period"] = period
 
@@ -178,9 +181,8 @@ def add_key(ctx: Context, delegate: str):
     delegator = ctx.obj.role
     keyring: InsecureFileKeyring = ctx.obj.keyring
     key = keyring.generate_key()
-    repo = GitRepository(keyring)
 
-    with repo.edit(delegator) as signed:    
+    with ctx.obj.repo.edit(delegator) as signed:
         helpers.add_key(signed, delegator, delegate, key.public)
     keyring.store_key(delegate, key)
 
@@ -192,8 +194,8 @@ def add_key(ctx: Context, delegate: str):
 def remove_key(ctx: Context, delegate: str, keyid: str):
     """Remove signing key from delegated role DELEGATE"""
     delegator = ctx.obj.role
-    repo = GitRepository(ctx.obj.keyring)
-    with repo.edit(delegator) as signed:
+
+    with ctx.obj.repo.edit(delegator) as signed:
         helpers.remove_key(signed, delegator, delegate, keyid)
 
 
@@ -209,8 +211,9 @@ def add_target(
     local_file: str,
 ):
     """Add a target to a Targets metadata role"""
-    repo = GitRepository(ctx.obj.keyring)
-    repo.add_target(ctx.obj.role, target_in_repo, target_path, local_file)
+    ctx.obj.repo.add_target(
+        ctx.obj.role, target_in_repo, target_path, local_file
+    )
 
 
 @edit.command()
@@ -218,8 +221,8 @@ def add_target(
 @click.argument("target-path")
 def remove_target(ctx: Context, target_path: str):
     """Remove TARGET from a Targets role ROLE"""
-    repo = GitRepository(ctx.obj.keyring)
-    with repo.edit(ctx.obj.role) as targets:
+
+    with ctx.obj.repo.edit(ctx.obj.role) as targets:
         del targets.targets[target_path]
     print(f"Removed {target_path} from {ctx.obj.role}.")
     print("Actual target files have not been removed")
@@ -239,13 +242,13 @@ def add_delegation(
     hash_prefixes: Tuple[str],
 ):
     """Delegate from ROLE to DELEGATE"""
-    repo = GitRepository(ctx.obj.keyring)
+
     _paths = list(paths) if paths else None
     _prefixes = list(hash_prefixes) if hash_prefixes else None
 
-    with repo.edit(ctx.obj.role) as targets:
+    with ctx.obj.repo.edit(ctx.obj.role) as targets:
         if targets.delegations is None:
-            targets.delegations = Delegations({}, OrderedDict())
+            targets.delegations = Delegations({}, {})
 
         role = DelegatedRole(delegate, [], 1, terminating, _paths, _prefixes)
         targets.delegations.roles[role.name] = role
@@ -257,6 +260,5 @@ def remove_delegation(
     ctx: Context,
     delegate: str,
 ):
-    repo = GitRepository(ctx.obj.keyring)
-    with repo.edit(ctx.obj.role) as targets:
+    with ctx.obj.repo.edit(ctx.obj.role) as targets:
         del targets.delegations.roles[delegate]

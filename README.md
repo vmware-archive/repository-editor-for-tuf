@@ -63,7 +63,7 @@ The 'verify' command verifies repository validity.
 All of the metadata is stored in git and the git repository is meant to be
 shareable publicly. This means private keys must be stored elsewhere.
 
-tufrepo can currently read private key secrets f is now inrom two places
+tufrepo can currently read private key secrets from two places:
  * privkeys.json in the repo directory (this does not get committed to git).
    Encrypted keys are not yet supported.
  * environment variables. This is useful when running tufrepo on CI and reading

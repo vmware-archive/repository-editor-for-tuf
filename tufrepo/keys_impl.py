@@ -1,6 +1,7 @@
 # Copyright 2021 VMware, Inc.
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+import abc
 import glob
 import json
 import logging
@@ -19,8 +20,47 @@ from tufrepo.librepo.keys import PrivateKey
 
 logger = logging.getLogger("tufrepo")
 
-class InsecureFileKeyring(DefaultDict[str, Set[PrivateKey]]):
-    """ Private key management in plain text file
+
+class Keyring(DefaultDict[str, Set[PrivateKey]], metaclass=abc.ABCMeta):
+    """A base class for the private keyring management implementations."""
+
+    @abc.abstractmethod
+    def _load_key(self, rolename: str, key: Key) -> None:
+        """Load the private key of a given role and add it to the "key" object."""
+        raise NotImplementedError
+
+    def load_private_keys(self):
+        """Loads secrets for all delegating roles in this repository by using
+        self._load_key(). This currently loads all delegating metadata to
+        findthe public keys."""
+
+        # find all delegating roles in the repository
+        roles: Dict[str, int] = {}
+        for filename in glob.glob("*.*.json"):
+            ver_str, delegating_role = filename[: -len(".json")].split(".")
+            if delegating_role not in ["timestamp", "snapshot"]:
+                roles[delegating_role] = max(
+                    int(ver_str), roles.get(delegating_role, 0)
+                )
+
+        # find all signing keys for all roles
+        for delegating_role, version in roles.items():
+            md = Metadata.from_file(f"{version}.{delegating_role}.json")
+            if isinstance(md.signed, Root):
+                for rolename, role in md.signed.roles.items():
+                    for keyid in role.keyids:
+                        self._load_key(rolename, md.signed.keys[keyid])
+            elif isinstance(md.signed, Targets):
+                if md.signed.delegations is None:
+                    continue
+                for role in md.signed.delegations.roles.values():
+                    for keyid in role.keyids:
+                        self._load_key(
+                            role.name, md.signed.delegations.keys[keyid]
+                        )
+
+class InsecureFileKeyring(Keyring):
+    """Private key management in plain text file
 
     loads secrets from plain text privkeys.json file for all delegating roles
     in this repository. This currently loads all delegating metadata to find
@@ -47,29 +87,7 @@ class InsecureFileKeyring(DefaultDict[str, Set[PrivateKey]]):
         except FileNotFoundError:
             self._privkeyfile = {}
 
-        # find all delegating roles in the repository
-        roles: Dict[str, int] = {}
-        for filename in glob.glob("*.*.json"):
-            ver_str, delegating_role = filename[: -len(".json")].split(".")
-            if delegating_role not in ["timestamp", "snapshot"]:
-                roles[delegating_role] = max(
-                    int(ver_str), roles.get(delegating_role, 0)
-                )
-
-        # find all signing keys for all roles
-        for delegating_role, version in roles.items():
-            md = Metadata.from_file(f"{version}.{delegating_role}.json")
-            if isinstance(md.signed, Root):
-                for rolename, role in md.signed.roles.items():
-                    for keyid in role.keyids:
-                        self._load_key(rolename, md.signed.keys[keyid])
-            elif isinstance(md.signed, Targets):
-                if md.signed.delegations is None:
-                    continue
-                for role in md.signed.delegations.roles.values():
-                    for keyid in role.keyids:
-                        self._load_key(role.name, md.signed.delegations.keys[keyid])
-
+        super().load_private_keys()
         logger.info("Loaded keys for %d roles from privkeys.json", len(self))
 
     def generate_key(self) -> PrivateKey:
@@ -101,8 +119,8 @@ class InsecureFileKeyring(DefaultDict[str, Set[PrivateKey]]):
             role,
         )
 
-class EnvVarKeyring(DefaultDict[str, Set[PrivateKey]]):
-    """ "Private key management using environment variables
+class EnvVarKeyring(Keyring):
+    """Private key management using environment variables
     
     Load private keys from env variables (TUF_REPO_PRIVATE_KEY_*) for all
     delegating roles in this repository. This currently loads all delegating
@@ -119,27 +137,5 @@ class EnvVarKeyring(DefaultDict[str, Set[PrivateKey]]):
         # defaultdict with an empy set as initial value
         super().__init__(set)
 
-        # find all delegating roles in the repository
-        roles: Dict[str, int] = {}
-        for filename in glob.glob("*.*.json"):
-            ver_str, delegating_role = filename[: -len(".json")].split(".")
-            if delegating_role not in ["timestamp", "snapshot"]:
-                roles[delegating_role] = max(
-                    int(ver_str), roles.get(delegating_role, 0)
-                )
-
-        # find all signing keys for all roles
-        for delegating_role, version in roles.items():
-            md = Metadata.from_file(f"{version}.{delegating_role}.json")
-            if isinstance(md.signed, Root):
-                for rolename, role in md.signed.roles.items():
-                    for keyid in role.keyids:
-                        self._load_key(rolename, md.signed.keys[keyid])
-            elif isinstance(md.signed, Targets):
-                if md.signed.delegations is None:
-                    continue
-                for role in md.signed.delegations.roles.values():
-                    for keyid in role.keyids:
-                        self._load_key(role.name, md.signed.delegations.keys[keyid])
-
+        super().load_private_keys()
         logger.info("Loaded keys for %d roles from env vars", len(self))
