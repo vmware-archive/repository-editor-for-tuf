@@ -140,6 +140,12 @@ class TestCLI(unittest.TestCase):
         files.add("2.snapshot.json")
         self.assertEqual(set(os.listdir(self.cwd)), files)
 
+        # Update snapshot when it's not needed (expect nothing to happen)
+        self._run("snapshot")
+        proc = subprocess.run(["git", "diff", "--quiet"], cwd=self.cwd)
+        self.assertEqual(proc.returncode, 0)
+        self.assertEqual(set(os.listdir(self.cwd)), files)
+
         # Add target to role1 (don't add file to git)
         self._run("edit role1 add-target --no-target-in-repo files/timestamp.json timestamp.json")
 
