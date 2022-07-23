@@ -43,7 +43,7 @@ def verify_repo(root_hash: Optional[str]):
         updater.refresh()
     except RepositoryError as e:
         # TODO: improve this message by checking for common mistakes?
-        raise ClickException("Top-level metadata fails to validate") from e
+        raise ClickException(f"Top-level metadata fails to validate: {e}") from e
 
     # recursively verify all targets in delegation tree
     # This code is pretty horrible
@@ -87,7 +87,7 @@ def verify_repo(root_hash: Optional[str]):
                     )
                 except RepositoryError as e:
                     raise ClickException(
-                        f"Delegated target {role.name} fails to validate"
+                        f"Delegated target {role.name} fails to validate: {e}"
                     ) from e
     deleg_count = len(updater._trusted_set) - 4
 
