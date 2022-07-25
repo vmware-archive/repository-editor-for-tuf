@@ -16,6 +16,9 @@ from tufrepo.librepo.keys import Keyring
 
 logger = logging.getLogger("tufrepo")
 
+class AbortEdit(Exception):
+    pass
+
 class Repository(ABC):
 
     def _sign_role(self, role: str, metadata: Metadata, clear_sigs: bool):
@@ -83,28 +86,31 @@ class Repository(ABC):
         updated_snapshot = False
         removed_targets: Dict[str, MetaFile] = {}
 
-        with self.edit("snapshot") as snapshot:
-            for keyname, new_meta in current_targets.items():
-                if keyname not in snapshot.meta:
-                    updated_snapshot = True
-                    snapshot.meta[keyname] = new_meta
-                    continue
+        try:
+            with self.edit("snapshot") as snapshot:
+                for keyname, new_meta in current_targets.items():
+                    if keyname not in snapshot.meta:
+                        updated_snapshot = True
+                        snapshot.meta[keyname] = new_meta
+                        continue
 
-                old_meta = snapshot.meta[keyname]
-                if new_meta.version < old_meta.version:
-                    raise ValueError(f"{keyname} version rollback")
-                elif new_meta.version > old_meta.version:
-                    updated_snapshot = True
-                    snapshot.meta[keyname] = new_meta
-                    removed_targets[keyname] = old_meta
-
-        if updated_snapshot:
+                    old_meta = snapshot.meta[keyname]
+                    if new_meta.version < old_meta.version:
+                        raise ValueError(f"{keyname} version rollback")
+                    elif new_meta.version > old_meta.version:
+                        updated_snapshot = True
+                        snapshot.meta[keyname] = new_meta
+                        removed_targets[keyname] = old_meta
+                if not updated_snapshot:
+                    # need to raise to prevent context manager from saving a new version
+                    raise AbortEdit("Aborting edit: nothing to do")
+        except AbortEdit:
+            logger.info("Snapshot update not needed")
+        else:
             logger.info(f"Snapshot updated with {len(snapshot.meta)} targets")
             # Timestamp update
             with self.edit("timestamp") as timestamp:
                 timestamp.snapshot_meta = MetaFile(snapshot.version)
             logger.info("Timestamp updated")
-        else:
-            logger.info("Snapshot update not needed")
 
         return removed_targets
