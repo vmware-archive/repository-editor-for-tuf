@@ -30,7 +30,7 @@ class TestCLI(unittest.TestCase):
                 f"Expected '{needle}...', got '{haystack[:len(needle)]}...'"
             )
 
-    def _run(self, args: str, expected_out:Optional[str]="", expected_err:Optional[str]="") -> subprocess.CompletedProcess:
+    def _run(self, args: str, expected_out:Optional[str]="", expected_err:Optional[str]=None) -> subprocess.CompletedProcess:
         proc = subprocess.run(
             args=["tufrepo"] + args.split(),
             capture_output=True, 
@@ -40,10 +40,12 @@ class TestCLI(unittest.TestCase):
         if expected_out is not None:
            self.assertEqual(proc.stdout, expected_out)
         if expected_err is not None:
-            if proc.stderr != expected_err:
+            if expected_err not in proc.stderr:
                 print(proc.stderr)
-            self.assertEqual(proc.stderr, expected_err)
-        self.assertEqual(proc.returncode, 0)
+            self.assertIn(expected_err, proc.stderr)
+            self.assertEqual(proc.returncode, 1)
+        else:
+            self.assertEqual(proc.returncode, 0)
 
         return proc
  
