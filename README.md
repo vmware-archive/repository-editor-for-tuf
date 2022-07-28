@@ -132,7 +132,21 @@ while helps keep track of changes so far.
 
     git commit -a -m "Delegation to role1"
 
-### Target info update example:
+### Succinct delegation
+
+    # Add delegation to 16 roles named "bin-0" to "bin-f" to targets (sign with targets key)
+    # Also create a key for those roles
+    tufrepo edit targets add-delegation --succinct 16 bin
+    
+    # Create the 16 roles, sign with the key created earlier
+    tufrepo init-succinct-roles targets
+
+    # Update snapshot/timestamp contents (sign with snapshot/timestamp keys)
+    tufrepo snapshot
+
+    git commit -a -m "Succinct delegation"
+
+### Adding target files
 
     # Developer adds target "files/file1.txt" (sign with role1 key)
     tufrepo edit role1 add-target files/file1.txt ../targets/files/file1.txt
@@ -141,6 +155,10 @@ while helps keep track of changes so far.
     tufrepo snapshot
 
     git commit -a -m "Add target 'files/file1.txt'"
+
+### Adding target files without specifying the role
+
+    # TODO
 
 ## Contributing
 
