@@ -149,6 +149,30 @@ def init_succinct_roles(ctx: Context, role: str):
             ctx.obj.repo.init_role(bin_name, period)
 
 
+
+@cli.command()
+@click.pass_context
+@click.option("--target-in-repo/--no-target-in-repo", default=True)
+@click.option("--follow-delegations/--no-follow-delegations", default=True)
+@click.option("--role", default="targets")
+@click.argument("target-path")
+@click.argument("local-file")
+def add_target(
+    ctx: Context,
+    target_in_repo: bool,
+    follow_delegations: bool,
+    role: str,
+    target_path: str,
+    local_file: str,
+):
+    """Add a target file to the repository"""
+    final_role = ctx.obj.repo.add_target(
+        role, follow_delegations, target_in_repo, target_path, local_file
+    )
+    print(f"Added '{target_path}' as target to role '{final_role}'")
+
+
+
 # ------------------------------- edit commands --------------------------------
 
 
@@ -238,22 +262,6 @@ def remove_key(ctx: Context, delegate: str, keyid: str):
     with ctx.obj.repo.edit(delegator) as signed:
         helpers.remove_key(signed, delegator, delegate, keyid)
 
-
-@edit.command()
-@click.pass_context
-@click.option("--target-in-repo/--no-target-in-repo", default=True)
-@click.argument("target-path")
-@click.argument("local-file")
-def add_target(
-    ctx: Context,
-    target_in_repo: bool,
-    target_path: str,
-    local_file: str,
-):
-    """Add a target to a Targets metadata role"""
-    ctx.obj.repo.add_target(
-        ctx.obj.role, target_in_repo, target_path, local_file
-    )
 
 
 @edit.command()

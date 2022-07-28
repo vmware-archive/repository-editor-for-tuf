@@ -60,7 +60,7 @@ class TestCLI(unittest.TestCase):
         "edit 2": Data("edit --help", "Usage: tufrepo edit "),
         "add-delegation": Data("edit x add-delegation --help", "Usage: tufrepo edit ROLE add-delegation "),
         "add-key": Data("edit x add-key --help", "Usage: tufrepo edit ROLE add-key "),
-        "add-target": Data("edit x add-target --help", "Usage: tufrepo edit ROLE add-target "),
+        "add-target": Data("add-target --help", "Usage: tufrepo add-target "),
         "init": Data("edit x init --help", "Usage: tufrepo edit ROLE init "),
         "remove-delegation": Data("edit x remove-delegation --help", "Usage: tufrepo edit ROLE remove-delegation "),
         "remove-key": Data("edit x remove-key --help", "Usage: tufrepo edit ROLE remove-key "),
@@ -151,15 +151,27 @@ class TestCLI(unittest.TestCase):
         self.assertEqual(set(os.listdir(self.cwd)), files)
 
         # Add target to role1 (don't add file to git)
-        self._run("edit role1 add-target --no-target-in-repo files/timestamp.json timestamp.json")
+        self._run(
+            "add-target --role role1 --no-target-in-repo files/timestamp.json timestamp.json",
+            "Added 'files/timestamp.json' as target to role 'role1'\n"
+        )
 
         # Add target to role1 (also add target and hash-prefixed symlinks to git)
         with open(f"{self.cwd}/new-target", "w") as f:
             f.write("hello")
-        self._run("edit role1 add-target files/new-target ./new-target")
+        self._run(
+            "add-target --role role1 files/new-target ./new-target",
+            "Added 'files/new-target' as target to role 'role1'\n"
+        )
+
+        # Add target to role1 using delegation tree
+        self._run(
+            "add-target --role role1 files/newer-target ./new-target",
+            "Added 'files/newer-target' as target to role 'role1'\n"
+        )
 
         proc = self._run("verify", expected_out=None)
-        subprocess.run(["git", "commit", "-a", "-m", "Add target"], cwd=self.cwd, capture_output=True)
+        subprocess.run(["git", "commit", "-a", "-m", "Add target files"], cwd=self.cwd, capture_output=True)
 
         self.assertStartsWith(proc.stdout, "Metadata with 1 delegated targets verified")
         files |= { "2.role1.json", "new-target", "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824.new-target" }
@@ -289,6 +301,12 @@ class TestCLI(unittest.TestCase):
         files |= {"4.snapshot.json", "1.bin-0.json", "1.bin-1.json", "1.bin-2.json", "1.bin-3.json"}
         self.assertEqual(set(os.listdir(self.cwd)), files)
 
+        # Add a target to a delegated bin (use timestamp as content)
+        self._run(
+            "add-target --no-target-in-repo target/path timestamp.json",
+            "Added 'target/path' as target to role 'bin-1'\n"
+        )
+
         # Delegate to a new role in targets removing the succinct hash info.
         self._run("edit targets add-delegation --path 'files/*' role1")
         self._run("edit targets add-key role1")
@@ -296,13 +314,13 @@ class TestCLI(unittest.TestCase):
         # Update snapshot to use the 5.targets.json without the succint info.
         self._run("snapshot")
 
-        files -= {"4.snapshot.json", "4.targets.json"}
-        files |= {"5.snapshot.json", "5.targets.json", "1.role1.json"}
+        files -= {"4.snapshot.json", "4.targets.json", "1.bin-1.json"}
+        files |= {"5.snapshot.json", "5.targets.json", "1.role1.json", "2.bin-1.json"}
         self.assertEqual(set(os.listdir(self.cwd)), files)
 
         # Remove all bins as "targets" doesn't delegate to them anymore.
         subprocess.run(
-            ["rm",  "1.bin-0.json", "1.bin-1.json", "1.bin-2.json", "1.bin-3.json"],
+            ["rm",  "1.bin-0.json", "2.bin-1.json", "1.bin-2.json", "1.bin-3.json"],
             cwd=self.cwd,
             capture_output=True
         )
@@ -316,7 +334,7 @@ class TestCLI(unittest.TestCase):
         )
 
         self.assertStartsWith(proc.stdout, "Metadata with 1 delegated targets verified")
-        files -= {"1.bin-0.json", "1.bin-1.json", "1.bin-2.json", "1.bin-3.json"}
+        files -= {"1.bin-0.json", "2.bin-1.json", "1.bin-2.json", "1.bin-3.json"}
         self.assertEqual(set(os.listdir(self.cwd)), files)
 
         #### Cases that throw exception ####

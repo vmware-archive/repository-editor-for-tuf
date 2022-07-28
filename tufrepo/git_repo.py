@@ -27,7 +27,7 @@ from tuf.api.metadata import (
 from tuf.api.serialization.json import JSONSerializer
 
 from tufrepo import helpers
-from tufrepo.librepo.repo import Repository
+from tufrepo.librepo.repo import AbortEdit, Repository
 from tufrepo.librepo.keys import Keyring
 
 logger = logging.getLogger("tufrepo")
@@ -164,21 +164,39 @@ class GitRepository(Repository):
         if remove_old:
             os.remove(old_filename)
 
-    def add_target(self, role, target_in_repo: bool, target_path: str, local_file: str):
+    def add_target(self, role, follow_delegations: bool, target_in_repo: bool, target_path: str, local_file: str) -> str:
         """Adds a file to Targets metadata as a target
 
         Optionally adds the target file (and hash prefixed symlinks) to git as well.
         """
-        with self.edit(role) as targets:
-            targetfile = TargetFile.from_file(target_path, local_file)
-            targets.targets[targetfile.path] = targetfile
-            if target_in_repo:
-                self._git(["add", "--intent-to-add", local_file])
-                # create hash-symlinks for target file
-                for h in targetfile.hashes.values():
-                    dir, src_file = os.path.split(local_file)
-                    dst = os.path.join(dir, f"{h}.{src_file}")
-                    if os.path.islink(dst):
-                        os.remove(dst)
-                    os.symlink(src_file, dst)
-                    self._git(["add", "--intent-to-add", dst])
+
+        targetfile = TargetFile.from_file(target_path, local_file)
+
+        while True:
+            try:
+                with self.edit(role) as targets:
+                    targets: Targets
+
+                    if targets.delegations and follow_delegations:
+                        # see if target path is delegated
+                        delegations = targets.delegations.get_roles_for_target(target_path)
+                        role, _ = next(delegations, (None, None))
+                        if role:
+                            raise AbortEdit("Aborting edit: delegating instead")
+
+                    targets.targets[targetfile.path] = targetfile
+
+                    if target_in_repo:
+                        self._git(["add", "--intent-to-add", local_file])
+                        # create hash-symlinks for target file
+                        for h in targetfile.hashes.values():
+                            dir, src_file = os.path.split(local_file)
+                            dst = os.path.join(dir, f"{h}.{src_file}")
+                            if os.path.islink(dst):
+                                os.remove(dst)
+                            os.symlink(src_file, dst)
+                            self._git(["add", "--intent-to-add", dst])
+            except AbortEdit:
+                pass
+            else:
+                return role
