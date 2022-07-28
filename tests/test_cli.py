@@ -30,7 +30,7 @@ class TestCLI(unittest.TestCase):
                 f"Expected '{needle}...', got '{haystack[:len(needle)]}...'"
             )
 
-    def _run(self, args: str, expected_out:Optional[str]="", expected_err:Optional[str]="") -> subprocess.CompletedProcess:
+    def _run(self, args: str, expected_out:Optional[str]="", expected_err:Optional[str]=None) -> subprocess.CompletedProcess:
         proc = subprocess.run(
             args=["tufrepo"] + args.split(),
             capture_output=True, 
@@ -40,8 +40,12 @@ class TestCLI(unittest.TestCase):
         if expected_out is not None:
            self.assertEqual(proc.stdout, expected_out)
         if expected_err is not None:
-           self.assertEqual(proc.stderr, expected_err)
-        self.assertEqual(proc.returncode, 0)
+            if expected_err not in proc.stderr:
+                print(proc.stderr)
+            self.assertIn(expected_err, proc.stderr)
+            self.assertEqual(proc.returncode, 1)
+        else:
+            self.assertEqual(proc.returncode, 0)
 
         return proc
  
@@ -200,6 +204,142 @@ class TestCLI(unittest.TestCase):
         files -= { "4.snapshot.json", "2.targets.json", "3.role1.json" }
         files |= { "5.snapshot.json", "3.targets.json" }
         self.assertEqual(set(os.listdir(self.cwd)), files)
+
+    def test_targets_changes(self):
+        """Test multiple changes in targets delegations"""
+        subprocess.run(["git", "init", "."], cwd=self.cwd, capture_output=True)
+        subprocess.run(["git", "config", "--local", "user.name", "test"], cwd=self.cwd)
+        subprocess.run(["git", "config", "--local", "user.email", "test@example.com"], cwd=self.cwd)
+
+        # Create initial metadata
+        self._run("init")
+        proc = self._run("verify", expected_out=None)
+        subprocess.run(["git", "commit", "-a", "-m", "Initial metadata"], cwd=self.cwd, capture_output=True)
+
+        self.assertIn("Metadata with 0 delegated targets verified", proc.stdout)
+        self.assertIn("Keyring contains keys for [root, snapshot, targets, timestamp]", proc.stdout)
+        files = {".git", "1.root.json", "1.snapshot.json", "1.targets.json", "privkeys.json", "timestamp.json"}
+        self.assertEqual(set(os.listdir(self.cwd)), files)
+
+        # Add new role, delegate to role
+        self._run("edit targets add-delegation --path 'files/*' role1")
+        self._run("edit targets add-key role1")
+        self._run("edit role1 init")
+        proc = self._run("verify", expected_out=None)
+        subprocess.run(["git", "commit", "-a", "-m", "Add role, delegate"], cwd=self.cwd, capture_output=True)
+
+        # 1.targets.json is used for verification until a snapshot update.
+        self.assertStartsWith(proc.stdout, "Metadata with 0 delegated targets verified")
+        files |= { "2.targets.json", "1.role1.json" }
+        self.assertEqual(set(os.listdir(self.cwd)), files)
+
+        # Update snapshot
+        self._run("snapshot")
+        proc = self._run("verify", expected_out=None)
+        subprocess.run(["git", "commit", "-a", "-m", "snapshot"], cwd=self.cwd, capture_output=True)
+
+        self.assertStartsWith(proc.stdout, "Metadata with 1 delegated targets verified")
+        files -= { "1.snapshot.json", "1.targets.json" }
+        files.add("2.snapshot.json")
+        self.assertEqual(set(os.listdir(self.cwd)), files)
+
+        # Add another role with multiple hash prefixes
+        self._run("edit targets add-delegation --hash-prefix 00 --hash-prefix 01 role2")
+        self._run("edit targets add-key role2")
+        self._run("edit role2 init")
+        proc = self._run("verify", expected_out=None)
+        subprocess.run(["git", "commit", "-a", "-m", "Add second role, delegate"], cwd=self.cwd, capture_output=True)
+
+        # 2.targets.json is used for verification until a snapshot update.
+        self.assertStartsWith(proc.stdout, "Metadata with 1 delegated targets verified")
+        files |= {"3.targets.json", "1.role2.json"}
+        self.assertEqual(set(os.listdir(self.cwd)), files)
+
+        # Update snapshot
+        self._run("snapshot")
+        proc = self._run("verify", expected_out=None)
+        subprocess.run(["git", "commit", "-a", "-m", "snapshot"], cwd=self.cwd, capture_output=True)
+
+        self.assertStartsWith(proc.stdout, "Metadata with 2 delegated targets verified")
+        files -= {"2.snapshot.json", "2.targets.json"}
+        files.add("3.snapshot.json")
+        self.assertEqual(set(os.listdir(self.cwd)), files)
+
+        # Add succinct hash delegation removing all other delegated role info.
+        self._run("edit targets add-delegation --succinct 4 bin")
+        proc = self._run("verify", expected_out=None)
+
+        # 3.targets.json is used for verification until a snapshot update.
+        # Also, no delegated bin files were yet initialized.
+        self.assertStartsWith(proc.stdout, "Metadata with 2 delegated targets verified")
+        files.add("4.targets.json")
+        self.assertEqual(set(os.listdir(self.cwd)), files)
+
+        # Initialize delegated bin files based on the info in targets.
+        self._run("init-succinct-roles targets")
+
+        # Update snapshot to use the 4.targets.json with the succint roles info.
+        self._run("snapshot")
+        proc = self._run("verify", expected_out=None)
+        subprocess.run(["git", "commit", "-a", "-m", "snapshot"], cwd=self.cwd, capture_output=True)
+
+        # Only the delegated bins are considered as delegated targets.
+        self.assertStartsWith(proc.stdout, "Metadata with 4 delegated targets verified")
+        files -= {"3.snapshot.json", "3.targets.json"}
+        files |= {"4.snapshot.json", "1.bin-0.json", "1.bin-1.json", "1.bin-2.json", "1.bin-3.json"}
+        self.assertEqual(set(os.listdir(self.cwd)), files)
+
+        # Delegate to a new role in targets removing the succinct hash info.
+        self._run("edit targets add-delegation --path 'files/*' role1")
+        self._run("edit targets add-key role1")
+        self._run("edit role1 init")
+        # Update snapshot to use the 5.targets.json without the succint info.
+        self._run("snapshot")
+
+        files -= {"4.snapshot.json", "4.targets.json"}
+        files |= {"5.snapshot.json", "5.targets.json", "1.role1.json"}
+        self.assertEqual(set(os.listdir(self.cwd)), files)
+
+        # Remove all bins as "targets" doesn't delegate to them anymore.
+        subprocess.run(
+            ["rm",  "1.bin-0.json", "1.bin-1.json", "1.bin-2.json", "1.bin-3.json"],
+            cwd=self.cwd,
+            capture_output=True
+        )
+
+        proc = self._run("verify", expected_out=None)
+        subprocess.run([
+            "git",
+            "commit", "-a", "-m", "Add role, delegate and remove succinct info"],
+            cwd=self.cwd,
+            capture_output=True,
+        )
+
+        self.assertStartsWith(proc.stdout, "Metadata with 1 delegated targets verified")
+        files -= {"1.bin-0.json", "1.bin-1.json", "1.bin-2.json", "1.bin-3.json"}
+        self.assertEqual(set(os.listdir(self.cwd)), files)
+
+        #### Cases that throw exception ####
+        # Adding standard delegation and succinct hash bin delegation at once.
+        self._run(
+            "edit targets add-delegation --path a/b --succinct 32 bin",
+            "",
+            expected_err= "Not allowed to set delegated role options and the succinct option"
+        )
+
+        # Adding succinct hash delegation with zero bin amount.
+        self._run(
+            "edit targets add-delegation --succinct 0 bin",
+            "",
+            "Succinct number must be at least 2"
+        )
+
+        # Adding succinct delegation with bin amount that is not a power of 2.
+        self._run(
+            "edit targets add-delegation --succinct 3 bin",
+            "",
+            "Succinct number must be a power of 2"
+        )
 
 if __name__ == '__main__':
     unittest.main()

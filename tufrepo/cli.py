@@ -3,17 +3,23 @@
 
 import click
 import logging
+import math
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Optional, Tuple
+from typing import Optional, List, Tuple
 
-from tuf.api.metadata import DelegatedRole, Delegations
+from tuf.api.metadata import(
+    DelegatedRole,
+    Delegations,
+    SuccinctRoles,
+    Targets
+)
 
 from tufrepo import helpers
 from tufrepo import verifier
 from tufrepo.librepo.keys import Keyring
 from tufrepo.git_repo import GitRepository
-from tufrepo.keys_impl import EnvVarKeyring, InsecureFileKeyring
+from tufrepo.keys_impl import EnvVarKeyring, InsecureFileKeyring, PrivateKey
 
 logger = logging.getLogger("tufrepo")
 
@@ -76,8 +82,8 @@ def init(ctx: Context):
 
     with ctx.obj.repo.edit("root") as root:
         for role in ["root", "timestamp", "snapshot", "targets"]:
-            key = ctx.obj.keyring.generate_key()
-            root.add_key(role, key.public)
+            key: PrivateKey = ctx.obj.keyring.generate_key()
+            root.add_key(key.public, role)
             ctx.obj.keyring.store_key(role, key)
 
     ctx.obj.repo.init_role("timestamp", period)
@@ -105,8 +111,42 @@ def verify(ctx: Context, root_hash: Optional[str] = None):
 @cli.command()
 @click.pass_context
 def snapshot(ctx: Context):
-    """"""
+    """Update snapshot and timestamp meta information"""
     ctx.obj.repo.snapshot()
+
+
+@cli.command()
+@click.pass_context
+@click.argument("role")
+def init_succinct_roles(ctx: Context, role: str):
+    """Create a new set of delegated bin files based on the succinct hash bin
+    delegation information in ROLE.
+
+    Note: it's required to call 'tufrepo edit ROLE add_succinct_delegation'
+    command first in order to provide succinct hash bin delegations information
+    first."""
+
+    targets: Targets
+    with ctx.obj.repo.edit(role) as targets:
+        if targets.delegations is None or targets.delegations.succinct_roles is None:
+            raise ValueError(
+                "'ROLE' doesn't contain information about succinct delegations"
+            )
+
+        full_keys_info: List[PrivateKey] = []
+        for _ in range(targets.delegations.succinct_roles.threshold):
+            new_key: PrivateKey = ctx.obj.keyring.generate_key()
+            full_keys_info.append(new_key)
+            helpers.add_key(targets, role, None, new_key.public)
+
+        for bin_name in targets.delegations.succinct_roles.get_roles():
+            # Store all generated keys for delegations for each of the bins.
+            for key in full_keys_info:
+                ctx.obj.keyring.store_key(bin_name, key)
+
+            # Use expiry period of 1 year for everything
+            period = int(timedelta(days=365).total_seconds())
+            ctx.obj.repo.init_role(bin_name, period)
 
 
 # ------------------------------- edit commands --------------------------------
@@ -222,6 +262,7 @@ def add_target(
 def remove_target(ctx: Context, target_path: str):
     """Remove TARGET from a Targets role ROLE"""
 
+    targets: Targets
     with ctx.obj.repo.edit(ctx.obj.role) as targets:
         del targets.targets[target_path]
     print(f"Removed {target_path} from {ctx.obj.role}.")
@@ -230,28 +271,73 @@ def remove_target(ctx: Context, target_path: str):
 
 @edit.command()
 @click.pass_context
-@click.argument("delegate")
 @click.option("--terminating/--non-terminating", default=False)
 @click.option("--path", "paths", multiple=True)
 @click.option("--hash-prefix", "hash_prefixes", multiple=True)
+@click.option("--succinct", "bin_amount", type=int)
+@click.argument("delegate")
 def add_delegation(
     ctx: Context,
-    delegate: str,
-    terminating: bool,
+    terminating: Optional[bool],
     paths: Tuple[str],
     hash_prefixes: Tuple[str],
+    bin_amount: Optional[int],
+    delegate: str,
 ):
-    """Delegate from ROLE to DELEGATE"""
+    """Delegate from ROLE to DELEGATE.
 
-    _paths = list(paths) if paths else None
-    _prefixes = list(hash_prefixes) if hash_prefixes else None
+    There are two modes for this command:
+    - add a new delegated role in ROLE.
+    - add а succinct hash bin delegation
 
+    If you want to add a new delegated role then the new role will have a name
+    "DELEGATE" and you can use the three options: "terminating", "path" and
+    "hash-prefix".
+
+    IF you want to add a new succinct hash bin delegation then you should use
+    the "succinct" option and you are not allowed to use any of the other three
+    options.
+    For the "succinct" option you should provide a number representing the
+    number of bins. It MUST be a power of 2.
+    Finally, if you add a new succinct hash bin delegation then "DELEGATE" will
+    be the name prefix of all bins.
+    """
+
+    sum_lengths_paths_and_prefixes = len(paths) + len(hash_prefixes)
+    # sum_lengths_paths_and_prefixes must be at least 1 if a user wants to
+    # delegate to a new role as either paths or hash_prefixes must be set.
+    if bin_amount is not None and sum_lengths_paths_and_prefixes > 0:
+        raise ValueError(
+            "Not allowed to set delegated role options and the succinct option"
+        )
+
+    targets: Targets
     with ctx.obj.repo.edit(ctx.obj.role) as targets:
-        if targets.delegations is None:
-            targets.delegations = Delegations({}, {})
+        # Add delegated role "delegate"
+        if sum_lengths_paths_and_prefixes > 0:
+            if (
+                targets.delegations is None
+                or targets.delegations.succinct_roles is not None
+            ):
+                targets.delegations = Delegations({}, {})
 
-        role = DelegatedRole(delegate, [], 1, terminating, _paths, _prefixes)
-        targets.delegations.roles[role.name] = role
+            _paths = list(paths) if paths else None
+            _prefixes = list(hash_prefixes) if hash_prefixes else None
+            role = DelegatedRole(delegate, [], 1, terminating, _paths, _prefixes)
+            targets.delegations.roles[role.name] = role
+
+        # Add succinct hash bin delegation.
+        # In this case "delegate" is the prefix of all bins.
+        elif bin_amount is not None:
+            if bin_amount < 2:
+                raise ValueError("Succinct number must be at least 2")
+            if bin_amount % 2 != 0:
+                raise ValueError("Succinct number must be a power of 2")
+
+            bit_length = int(math.log2(bin_amount))
+            succinct_roles =  SuccinctRoles([], 1, bit_length, delegate)
+            targets.delegations = Delegations({}, None, succinct_roles)
+
 
 @edit.command()
 @click.pass_context
@@ -260,5 +346,8 @@ def remove_delegation(
     ctx: Context,
     delegate: str,
 ):
-    with ctx.obj.repo.edit(ctx.obj.role) as targets:
-        del targets.delegations.roles[delegate]
+    """Remove DELEGATE from ROLE"""
+    tar: Targets
+    with ctx.obj.repo.edit(ctx.obj.role) as tar:
+        if tar.delegations is not None and tar.delegations.roles is not None:
+            del tar.delegations.roles[delegate]
