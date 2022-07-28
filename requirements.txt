@@ -1,4 +1,4 @@
 securesystemslib[pynacl]
-# Build from source the latest changes in the develop branch of python-tuf.
-git+https://github.com/theupdateframework/python-tuf.git@develop
+# Install from git to get succinct delegations support (should be in 2.0 release)
+git+https://github.com/theupdateframework/python-tuf.git@3516cc36b607898bdbd94bcc0a4d9abcd4b67722
 click
