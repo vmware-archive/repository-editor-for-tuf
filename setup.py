@@ -10,7 +10,7 @@ setup(
     install_requires=[
         'Click',
         'securesystemslib[pynacl]',
-        'tuf>=1.1.0',
+        'tuf @ git+https://github.com/theupdateframework/python-tuf.git@3516cc36b607898bdbd94bcc0a4d9abcd4b67722',
     ],
     entry_points={
         'console_scripts': [
