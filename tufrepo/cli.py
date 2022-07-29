@@ -4,6 +4,7 @@
 import click
 import logging
 import math
+from click.exceptions import ClickException
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Optional, List, Tuple
@@ -129,7 +130,7 @@ def init_succinct_roles(ctx: Context, role: str):
     targets: Targets
     with ctx.obj.repo.edit(role) as targets:
         if targets.delegations is None or targets.delegations.succinct_roles is None:
-            raise ValueError(
+            raise ClickException(
                 "'ROLE' doesn't contain information about succinct delegations"
             )
 
@@ -278,7 +279,7 @@ def remove_target(ctx: Context, target_path: str):
 @click.argument("delegate")
 def add_delegation(
     ctx: Context,
-    terminating: Optional[bool],
+    terminating: bool,
     paths: Tuple[str],
     hash_prefixes: Tuple[str],
     bin_amount: Optional[int],
@@ -307,7 +308,7 @@ def add_delegation(
     # sum_lengths_paths_and_prefixes must be at least 1 if a user wants to
     # delegate to a new role as either paths or hash_prefixes must be set.
     if bin_amount is not None and sum_lengths_paths_and_prefixes > 0:
-        raise ValueError(
+        raise ClickException(
             "Not allowed to set delegated role options and the succinct option"
         )
 
@@ -323,16 +324,21 @@ def add_delegation(
 
             _paths = list(paths) if paths else None
             _prefixes = list(hash_prefixes) if hash_prefixes else None
-            role = DelegatedRole(delegate, [], 1, terminating, _paths, _prefixes)
+
+            try:
+                role = DelegatedRole(delegate, [], 1, terminating, _paths, _prefixes)
+            except ValueError:
+                raise ClickException(f"Only one of (paths, hash_prefixes) must be set")
+
             targets.delegations.roles[role.name] = role
 
         # Add succinct hash bin delegation.
         # In this case "delegate" is the prefix of all bins.
         elif bin_amount is not None:
             if bin_amount < 2:
-                raise ValueError("Succinct number must be at least 2")
+                raise ClickException("Succinct number must be at least 2")
             if bin_amount % 2 != 0:
-                raise ValueError("Succinct number must be a power of 2")
+                raise ClickException("Succinct number must be a power of 2")
 
             bit_length = int(math.log2(bin_amount))
             succinct_roles =  SuccinctRoles([], 1, bit_length, delegate)
