@@ -306,16 +306,24 @@ class TestCLI(unittest.TestCase):
             "add-target --no-target-in-repo target/path timestamp.json",
             "Added 'target/path' as target to role 'bin-1'\n"
         )
+        self._run("snapshot")
+        subprocess.run(["git", "commit", "-a", "-m", "add target to delegated bin"], cwd=self.cwd, capture_output=True)
+
+        # expect that target was added to bin-1 because of delegation
+        files -= {"4.snapshot.json", "1.bin-1.json"}
+        files |= {"5.snapshot.json", "2.bin-1.json"}
+        self.assertEqual(set(os.listdir(self.cwd)), files)
 
         # Delegate to a new role in targets removing the succinct hash info.
         self._run("edit targets add-delegation --path 'files/*' role1")
         self._run("edit targets add-key role1")
         self._run("edit role1 init")
-        # Update snapshot to use the 5.targets.json without the succint info.
+
+        # Update snapshot to use new targets metadata without the succint info.
         self._run("snapshot")
 
-        files -= {"4.snapshot.json", "4.targets.json", "1.bin-1.json"}
-        files |= {"5.snapshot.json", "5.targets.json", "1.role1.json", "2.bin-1.json"}
+        files -= {"5.snapshot.json", "4.targets.json"}
+        files |= {"6.snapshot.json", "5.targets.json", "1.role1.json"}
         self.assertEqual(set(os.listdir(self.cwd)), files)
 
         # Remove all bins as "targets" doesn't delegate to them anymore.
