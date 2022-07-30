@@ -337,7 +337,9 @@ def add_delegation(
         elif bin_amount is not None:
             if bin_amount < 2:
                 raise ClickException("Succinct number must be at least 2")
-            if bin_amount % 2 != 0:
+            # If the the result of math.log2(bin_amount) is NOT a natural number
+            # then bin_amount is NOT a power of 2.
+            if not math.log2(bin_amount).is_integer():
                 raise ClickException("Succinct number must be a power of 2")
 
             bit_length = int(math.log2(bin_amount))

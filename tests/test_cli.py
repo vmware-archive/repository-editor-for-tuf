@@ -336,7 +336,7 @@ class TestCLI(unittest.TestCase):
 
         # Adding succinct delegation with bin amount that is not a power of 2.
         self._run(
-            "edit targets add-delegation --succinct 3 bin",
+            "edit targets add-delegation --succinct 10 bin",
             "",
             "Error: Succinct number must be a power of 2\n"
         )
