@@ -287,13 +287,14 @@ def add_delegation(
 ):
     """Delegate from ROLE to DELEGATE.
 
-    There are two modes for this command:
-    - add a new delegated role in ROLE.
+    There are three modes for this command:
+    - add a new delegated role in ROLE with "paths" information provided.
+    - add a new delegated role in ROLE with "hash-prefix" information provided.
     - add а succinct hash bin delegation
 
-    If you want to add a new delegated role then the new role will have a name
-    "DELEGATE" and you can use the three options: "terminating", "path" and
-    "hash-prefix".
+    If you want to add a new delegated role (the first two modes) then the new
+    role will have the name "DELEGATE" and you can use the three options:
+    "terminating", "path" and "hash-prefix".
 
     IF you want to add a new succinct hash bin delegation then you should use
     the "succinct" option and you are not allowed to use any of the other three
