@@ -312,6 +312,11 @@ def add_delegation(
             "Not allowed to set delegated role options and the succinct option"
         )
 
+    if bin_amount is None and sum_lengths_paths_and_prefixes == 0:
+        raise ClickException(
+            "Either paths/hash_prefix options must be set or succinct option"
+        )
+
     targets: Targets
     with ctx.obj.repo.edit(ctx.obj.role) as targets:
         # Add delegated role "delegate"

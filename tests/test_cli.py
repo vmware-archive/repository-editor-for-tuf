@@ -341,5 +341,12 @@ class TestCLI(unittest.TestCase):
             "Error: Succinct number must be a power of 2\n"
         )
 
+        # Running add-delegation without path, hash_prefix or succinct option
+        self._run(
+            "edit targets add-delegation delegate",
+            "",
+            "Error: Either paths/hash_prefix options must be set or succinct option\n"
+        )
+
 if __name__ == '__main__':
     unittest.main()
