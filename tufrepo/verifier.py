@@ -16,11 +16,8 @@ from tufrepo.filesystem_fetcher import FilesystemFetcher
 logger = logging.getLogger("tufrepo")
 
 
-def add_if_validated(
-    updater: Updater, delegators: List, role: str, delegator: str
-):
-    """Verify a given 'role' and if it has been successfully verified add it to
-    the 'delegators'."""
+def verify_role(updater: Updater, role: str, delegator: str) -> None:
+    """Verify a given 'role'."""
     assert updater._trusted_set.snapshot is not None
     snapshot: Snapshot = updater._trusted_set.snapshot.signed
 
@@ -39,7 +36,6 @@ def add_if_validated(
     logger.debug("Verifying %s", role)
     try:
         updater._trusted_set.update_delegated_targets(data, role, delegator)
-        delegators.append((role, updater._trusted_set[role].signed))
     except ExpiredMetadataError as e:
         logger.warning("Delegated target %s has expired", role)
     except RepositoryError as e:
@@ -87,11 +83,12 @@ def verify_repo(root_hash: Optional[str]):
 
         if delegator.delegations.roles is not None:
             for role in delegator.delegations.roles.values():
-                add_if_validated(updater, delegators, role.name, delegator_name)
-
+                verify_role(updater, role.name, delegator_name)
+                delegators.append((role.name, updater._trusted_set[role.name].signed))
         if delegator.delegations.succinct_roles is not None:
             for bin_name in delegator.delegations.succinct_roles.get_roles():
-                add_if_validated(updater, delegators, bin_name, delegator_name)
+                verify_role(updater, bin_name, delegator_name)
+                delegators.append((bin_name, updater._trusted_set[bin_name].signed))
 
     deleg_count = len(updater._trusted_set) - 4
 
