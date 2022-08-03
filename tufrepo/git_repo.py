@@ -178,6 +178,8 @@ class GitRepository(Repository):
         """
         targetfile = None
 
+        # special case delegation search: if follow_delegations, then we look
+        # for the first "leaf" targets role (that does not delegate further)
         while not targetfile:
             with self.edit(role) as targets:
                 targets: Targets
@@ -206,3 +208,44 @@ class GitRepository(Repository):
                         self._git(["add", "--intent-to-add", dst])
 
         return role
+
+    def remove_target(self, role: str, follow_delegations: bool, target_path: str) -> Optional[str]:
+        """Removes a file from the repository
+
+        role: name of targets role that is the starting point for the targets-role search
+        follow_delegations: should delegations under role be followed to find the correct targets-role
+
+        Returns the name of the role the target was actually removed from (or
+        None if nothing was removed)
+        """
+        targetfile = None
+        roles = [role]
+
+        # Delegation search here works like the one in tuf.ngclient
+        while roles:
+            role = roles.pop(-1)
+            with self.edit(role) as targets:
+                targets: Targets
+
+                if target_path in targets.targets:
+                    del targets.targets[target_path]
+                    return role
+
+                # target file was not found in this metadata: try delegations
+                if targets.delegations and follow_delegations:
+                    child_roles = []
+                    for (
+                        child, terminating
+                    ) in targets.delegations.get_roles_for_target(target_path):
+                        child_roles.append(child)
+                        if terminating:
+                            # prevent further delegation search
+                            roles.clear()
+                            break
+                    roles.extend(reversed(child_roles))
+
+                raise AbortEdit("skipping remove-target: target not found in metadata")
+
+        # No target found
+        return None
+
