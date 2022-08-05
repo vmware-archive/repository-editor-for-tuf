@@ -8,9 +8,9 @@ import logging
 from abc import abstractmethod, ABC
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Dict, Generator
+from typing import Dict, Generator, Optional
 
-from tuf.api.metadata import Metadata, MetaFile, Signed
+from tuf.api.metadata import Metadata, MetaFile, Signed, TargetFile, Targets
 
 from tufrepo.librepo.keys import Keyring
 
@@ -123,3 +123,70 @@ class Repository(ABC):
             logger.info("Timestamp updated")
 
         return removed_targets
+
+    def add_target(self, role, follow_delegations: bool, targetfile: TargetFile) -> str:
+        """Adds a file to the repository as a target
+
+        role: name of targets role that is the starting point for the targets-role search
+        follow_delegations: should delegations under role be followed to find the correct targets-role
+
+        Returns the name of the role the target was actually added into
+        """
+
+        # special case delegation search: if follow_delegations, then we look
+        # for the first "leaf" targets role (that does not delegate further)
+        while True:
+            with self.edit(role) as targets:
+                targets: Targets
+
+                if targets.delegations and follow_delegations:
+                    # see if target path is delegated (always pick first valid delegation)
+                    delegations = targets.delegations.get_roles_for_target(targetfile.path)
+                    new_role, _ = next(delegations, (None, None))
+                    if new_role:
+                        role = new_role
+                        raise AbortEdit("Skip add-target: use delegation instead")
+
+                # role does not delegate further: add the target
+                targets.targets[targetfile.path] = targetfile
+                return role
+
+    def remove_target(self, role: str, follow_delegations: bool, target_path: str) -> Optional[str]:
+        """Removes a file from the repository
+
+        role: name of targets role that is the starting point for the targets-role search
+        follow_delegations: should delegations under role be followed to find the correct targets-role
+
+        Returns the name of the role the target was actually removed from (or
+        None if nothing was removed)
+        """
+        targetfile = None
+        roles = [role]
+
+        # Delegation search here works like the one in tuf.ngclient
+        while roles:
+            role = roles.pop(-1)
+            with self.edit(role) as targets:
+                targets: Targets
+
+                if target_path in targets.targets:
+                    del targets.targets[target_path]
+                    return role
+
+                # target file was not found in this metadata: try delegations
+                if targets.delegations and follow_delegations:
+                    child_roles = []
+                    for (
+                        child, terminating
+                    ) in targets.delegations.get_roles_for_target(target_path):
+                        child_roles.append(child)
+                        if terminating:
+                            # prevent further delegation search
+                            roles.clear()
+                            break
+                    roles.extend(reversed(child_roles))
+
+                raise AbortEdit("skipping remove-target: target not found in metadata")
+
+        # No target found
+        return None

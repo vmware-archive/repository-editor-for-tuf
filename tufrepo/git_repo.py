@@ -26,7 +26,6 @@ from tuf.api.metadata import (
 )
 from tuf.api.serialization.json import JSONSerializer
 
-from tufrepo import helpers
 from tufrepo.librepo.repo import AbortEdit, Repository
 from tufrepo.librepo.keys import Keyring
 
@@ -162,12 +161,19 @@ class GitRepository(Repository):
             with super()._edit(role, expiry, version) as signed:
                 yield signed
         except AbortEdit:
-            pass # caller aborted edit
+            pass  # caller aborted edit
         else:
             if remove_old:
                 os.remove(old_filename)
 
-    def add_target(self, role, follow_delegations: bool, target_in_repo: bool, target_path: str, local_file: str) -> str:
+    def add_target(
+        self,
+        role,
+        follow_delegations: bool,
+        target_in_repo: bool,
+        target_path: str,
+        local_file: str,
+    ) -> str:
         """Adds a file to the repository as a target
 
         role: name of targets role that is the starting point for the targets-role search
@@ -176,76 +182,19 @@ class GitRepository(Repository):
 
         Returns the name of the role the target was actually added into
         """
-        targetfile = None
 
-        # special case delegation search: if follow_delegations, then we look
-        # for the first "leaf" targets role (that does not delegate further)
-        while not targetfile:
-            with self.edit(role) as targets:
-                targets: Targets
+        targetfile = TargetFile.from_file(target_path, local_file)
+        final_role = super().add_target(role, follow_delegations, targetfile)
 
-                if targets.delegations and follow_delegations:
-                    # see if target path is delegated (always pick first valid delegation)
-                    delegations = targets.delegations.get_roles_for_target(target_path)
-                    new_role, _ = next(delegations, (None, None))
-                    if new_role:
-                        role = new_role
-                        raise AbortEdit("Skip add-target: use delegation instead")
+        # Add the actual file to git and create hash-prefixed symlinks
+        if target_in_repo:
+            self._git(["add", "--intent-to-add", local_file])
+            for h in targetfile.hashes.values():
+                dir, src_file = os.path.split(local_file)
+                dst = os.path.join(dir, f"{h}.{src_file}")
+                if os.path.islink(dst):
+                    os.remove(dst)
+                os.symlink(src_file, dst)
+                self._git(["add", "--intent-to-add", dst])
 
-                # role does not delegate further: add the target
-                targetfile = TargetFile.from_file(target_path, local_file)
-                targets.targets[targetfile.path] = targetfile
-
-                if target_in_repo:
-                    self._git(["add", "--intent-to-add", local_file])
-                    # create hash-symlinks for target file
-                    for h in targetfile.hashes.values():
-                        dir, src_file = os.path.split(local_file)
-                        dst = os.path.join(dir, f"{h}.{src_file}")
-                        if os.path.islink(dst):
-                            os.remove(dst)
-                        os.symlink(src_file, dst)
-                        self._git(["add", "--intent-to-add", dst])
-
-        return role
-
-    def remove_target(self, role: str, follow_delegations: bool, target_path: str) -> Optional[str]:
-        """Removes a file from the repository
-
-        role: name of targets role that is the starting point for the targets-role search
-        follow_delegations: should delegations under role be followed to find the correct targets-role
-
-        Returns the name of the role the target was actually removed from (or
-        None if nothing was removed)
-        """
-        targetfile = None
-        roles = [role]
-
-        # Delegation search here works like the one in tuf.ngclient
-        while roles:
-            role = roles.pop(-1)
-            with self.edit(role) as targets:
-                targets: Targets
-
-                if target_path in targets.targets:
-                    del targets.targets[target_path]
-                    return role
-
-                # target file was not found in this metadata: try delegations
-                if targets.delegations and follow_delegations:
-                    child_roles = []
-                    for (
-                        child, terminating
-                    ) in targets.delegations.get_roles_for_target(target_path):
-                        child_roles.append(child)
-                        if terminating:
-                            # prevent further delegation search
-                            roles.clear()
-                            break
-                    roles.extend(reversed(child_roles))
-
-                raise AbortEdit("skipping remove-target: target not found in metadata")
-
-        # No target found
-        return None
-
+        return final_role
