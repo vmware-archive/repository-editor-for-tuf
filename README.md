@@ -134,12 +134,11 @@ while helps keep track of changes so far.
 
 ### Succinct delegation
 
-    # Add delegation to 16 roles named "bin-0" to "bin-f" to targets (sign with targets key)
-    # Also create a key for those roles
-    tufrepo edit targets add-delegation --succinct 16 bin
-    
-    # Create the 16 roles, sign with the key created earlier
-    tufrepo init-succinct-roles targets
+    # Add delegation to 16 roles named "bin-0" to "bin-f" to role1 (sign with role1 key)
+    tufrepo edit role1 add-delegation --succinct 16 bin
+
+    # Create the 16 roles, add shared succinct role key(s), sign with that key
+    tufrepo init-succinct-roles role1
 
     # Update snapshot/timestamp contents (sign with snapshot/timestamp keys)
     tufrepo snapshot
@@ -148,17 +147,14 @@ while helps keep track of changes so far.
 
 ### Adding target files
 
-    # Developer adds target "files/file1.txt" (sign with role1 key)
-    tufrepo edit role1 add-target files/file1.txt ../targets/files/file1.txt
+    # Developer adds target "files/file1.txt": this is delegated first to "role1",
+    # then to "bin-2", so change is signed by the succinct role key
+    tufrepo add-target files/file1.txt ../targets/files/file1.txt
 
     # Update snapshot/timestamp contents (sign with snapshot/timestamp key)
     tufrepo snapshot
 
     git commit -a -m "Add target 'files/file1.txt'"
-
-### Adding target files without specifying the role
-
-    # TODO
 
 ## Contributing
 

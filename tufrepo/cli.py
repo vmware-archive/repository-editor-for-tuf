@@ -149,6 +149,42 @@ def init_succinct_roles(ctx: Context, role: str):
             ctx.obj.repo.init_role(bin_name, period)
 
 
+
+@cli.command()
+@click.pass_context
+@click.option("--no-target-in-repo", is_flag=True, default=False)
+@click.option("--no-follow-delegations", is_flag=True, default=False)
+@click.option("--role", default="targets", metavar="ROLE", show_default=True)
+@click.argument("target-path")
+@click.argument("local-file")
+def add_target(
+    ctx: Context,
+    no_target_in_repo: bool,
+    no_follow_delegations: bool,
+    role: str,
+    target_path: str,
+    local_file: str,
+):
+    """Add target file to the repository
+
+    TARGET_PATH is used in the metadata to identify the target file. LOCAL_FILE
+    is used to calculate the file hashes. By default LOCAL_FILE (and
+    hash-prefixed symlinks) are also added to git, but this can be prevented
+    with --no-target-in-repo if the target files are not stored in git.
+
+    By default the target is added to whatever targets-metadata the target path
+    is last delegated to. The delegation search starting point is the top-level
+    targets by default but can be redefined with --role. The delegation search
+    can be disabled completely with --no-follow-delegations.
+
+    """
+    final_role = ctx.obj.repo.add_target(
+        role, not no_follow_delegations, not no_target_in_repo, target_path, local_file
+    )
+    print(f"Added '{target_path}' as target to role '{final_role}'")
+
+
+
 # ------------------------------- edit commands --------------------------------
 
 
@@ -238,22 +274,6 @@ def remove_key(ctx: Context, delegate: str, keyid: str):
     with ctx.obj.repo.edit(delegator) as signed:
         helpers.remove_key(signed, delegator, delegate, keyid)
 
-
-@edit.command()
-@click.pass_context
-@click.option("--target-in-repo/--no-target-in-repo", default=True)
-@click.argument("target-path")
-@click.argument("local-file")
-def add_target(
-    ctx: Context,
-    target_in_repo: bool,
-    target_path: str,
-    local_file: str,
-):
-    """Add a target to a Targets metadata role"""
-    ctx.obj.repo.add_target(
-        ctx.obj.role, target_in_repo, target_path, local_file
-    )
 
 
 @edit.command()

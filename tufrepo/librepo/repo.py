@@ -54,7 +54,15 @@ class Repository(ABC):
     @contextmanager
     @abstractmethod
     def edit(self, role:str) -> Generator[Signed, None, None]:
-        """Context manager for editing a roles metadata"""
+        """Context manager for editing a roles metadata
+
+        Context manager takes care of loading the roles metadata, updating expiry
+        and version. The caller can do other changes to the Signed object and when
+        the context manager exits, a new version of the roles metadata is stored.
+
+        Context manager user can raise AbortEdit from inside thw with-block to
+        cancel the edit: in this case none of the changes are stored.
+        """
 
     def sign(self, role: str):
         """sign without modifying content, or removing existing signatures"""
@@ -86,25 +94,26 @@ class Repository(ABC):
         updated_snapshot = False
         removed_targets: Dict[str, MetaFile] = {}
 
-        try:
-            with self.edit("snapshot") as snapshot:
-                for keyname, new_meta in current_targets.items():
-                    if keyname not in snapshot.meta:
-                        updated_snapshot = True
-                        snapshot.meta[keyname] = new_meta
-                        continue
+        with self.edit("snapshot") as snapshot:
+            for keyname, new_meta in current_targets.items():
+                if keyname not in snapshot.meta:
+                    updated_snapshot = True
+                    snapshot.meta[keyname] = new_meta
+                    continue
 
-                    old_meta = snapshot.meta[keyname]
-                    if new_meta.version < old_meta.version:
-                        raise ValueError(f"{keyname} version rollback")
-                    elif new_meta.version > old_meta.version:
-                        updated_snapshot = True
-                        snapshot.meta[keyname] = new_meta
-                        removed_targets[keyname] = old_meta
-                if not updated_snapshot:
-                    # need to raise to prevent context manager from saving a new version
-                    raise AbortEdit("Aborting edit: nothing to do")
-        except AbortEdit:
+                old_meta = snapshot.meta[keyname]
+                if new_meta.version < old_meta.version:
+                    raise ValueError(f"{keyname} version rollback")
+                elif new_meta.version > old_meta.version:
+                    updated_snapshot = True
+                    snapshot.meta[keyname] = new_meta
+                    removed_targets[keyname] = old_meta
+
+            if not updated_snapshot:
+                # prevent edit() from saving a new snapshot version
+                raise AbortEdit("Skip snapshot: No targets version changes")
+
+        if not updated_snapshot:
             logger.info("Snapshot update not needed")
         else:
             logger.info(f"Snapshot updated with {len(snapshot.meta)} targets")
