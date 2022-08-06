@@ -85,16 +85,18 @@ class Repository(ABC):
 
         Updates the meta information in snapshot/timestamp according to input.
 
-        Returns the targets metafiles that were removed from snapshot
+        Returns metafiles that were removed from repository (Targets or Snapshot)
         """
 
         # Snapshot update is needed if
         # * any targets files are not in snapshot or
         # * any targets version is incorrect
         updated_snapshot = False
-        removed_targets: Dict[str, MetaFile] = {}
+        removed: Dict[str, MetaFile] = {}
 
         with self.edit("snapshot") as snapshot:
+            old_snapshot_version = snapshot.version
+
             for keyname, new_meta in current_targets.items():
                 if keyname not in snapshot.meta:
                     updated_snapshot = True
@@ -107,7 +109,7 @@ class Repository(ABC):
                 elif new_meta.version > old_meta.version:
                     updated_snapshot = True
                     snapshot.meta[keyname] = new_meta
-                    removed_targets[keyname] = old_meta
+                    removed[keyname] = old_meta
 
             if not updated_snapshot:
                 # prevent edit() from saving a new snapshot version
@@ -117,12 +119,14 @@ class Repository(ABC):
             logger.info("Snapshot update not needed")
         else:
             logger.info(f"Snapshot updated with {len(snapshot.meta)} targets")
-            # Timestamp update
+            # Timestamp update (also add old snapshot to removed)
             with self.edit("timestamp") as timestamp:
                 timestamp.snapshot_meta = MetaFile(snapshot.version)
+            removed["snapshot.json"] = MetaFile(old_snapshot_version)
+
             logger.info("Timestamp updated")
 
-        return removed_targets
+        return removed
 
     def add_target(self, role, follow_delegations: bool, targetfile: TargetFile) -> str:
         """Adds a file to the repository as a target

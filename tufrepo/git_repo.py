@@ -8,7 +8,7 @@ import logging
 import os
 import subprocess
 
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta
 from typing import Dict, Generator, List, Optional
 
@@ -109,6 +109,9 @@ class GitRepository(Repository):
         This command only updates the meta information in snapshot/timestamp
         according to current filenames: it does not validate those files in any
         way. Run 'verify' after 'snapshot' to validate repository state.
+
+        Deletes snapshot and targets files once they are no longer part of the
+        repository.
         """
 
         # Find targets role name and newest version
@@ -127,19 +130,16 @@ class GitRepository(Repository):
 
         removed = super().snapshot(targets_roles)
 
+        # delete the removed files (if any)
         for keyname, meta in removed.items():
-            # delete the older file (if any): it is not part of snapshot
-            try:
+            with suppress(FileNotFoundError):
                 os.remove(f"{meta.version}.{keyname}")
-            except FileNotFoundError:
-                pass
 
     @contextmanager
     def edit(self, role: str) -> Generator[Signed, None, None]:
         md = self._load(role)
         version = md.signed.version
         old_filename = self._get_filename(role, version)
-        remove_old = False
 
         # Find out expiry and need for version bump
         try:
@@ -153,18 +153,11 @@ class GitRepository(Repository):
         diff_cmd = ["diff", "--exit-code", "--no-patch", "--", old_filename]
         if os.path.exists(old_filename) and self._git(diff_cmd) == 0:
             version += 1
-            # only snapshots need deleting (targets are deleted in snapshot())
-            if role == "snapshot":
-                remove_old = True
 
-        try:
+        # allow user to cancel the edit by raising AbortEdit
+        with suppress(AbortEdit):
             with super()._edit(role, expiry, version) as signed:
                 yield signed
-        except AbortEdit:
-            pass  # caller aborted edit
-        else:
-            if remove_old:
-                os.remove(old_filename)
 
     def add_target(
         self,
