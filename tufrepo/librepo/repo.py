@@ -69,17 +69,6 @@ class Repository(ABC):
         md = self._load(role)
         self._save(role, md, False)
 
-    @contextmanager
-    def _edit(self, role:str, expiry: datetime, version: int) -> Generator[Signed, None, None]:
-        """Helper function for edit() implementations"""
-        md = self._load(role)
-
-        yield md.signed
-
-        md.signed.expires = expiry
-        md.signed.version = version
-        self._save(role, md)
-
     def snapshot(self, current_targets: Dict[str, MetaFile]) -> Tuple[bool, Dict[str, MetaFile]]:
         """Update snapshot and timestamp meta information
 

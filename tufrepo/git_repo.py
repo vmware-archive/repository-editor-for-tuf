@@ -177,10 +177,12 @@ class GitRepository(Repository):
         if os.path.exists(old_filename) and self._git(diff_cmd) == 0:
             version += 1
 
-        # allow user to cancel the edit by raising AbortEdit
+        # Yield for editing but allow user to cancel by raising AbortEdit
         with suppress(AbortEdit):
-            with super()._edit(role, expiry, version) as signed:
-                yield signed
+            yield md.signed
+            md.signed.expires = expiry
+            md.signed.version = version
+            self._save(role, md)
 
     def add_target(
         self,
