@@ -8,9 +8,9 @@ import logging
 from abc import abstractmethod, ABC
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Dict, Generator, Optional
+from typing import Dict, Generator, Optional, Tuple
 
-from tuf.api.metadata import Metadata, MetaFile, Signed, TargetFile, Targets
+from tuf.api.metadata import Metadata, MetaFile, Signed, TargetFile, Targets, Timestamp
 
 from tufrepo.librepo.keys import Keyring
 
@@ -80,12 +80,14 @@ class Repository(ABC):
         md.signed.version = version
         self._save(role, md)
 
-    def snapshot(self, current_targets: Dict[str, MetaFile]) -> Dict[str, MetaFile]:
+    def snapshot(self, current_targets: Dict[str, MetaFile]) -> Tuple[bool, Dict[str, MetaFile]]:
         """Update snapshot and timestamp meta information
 
         Updates the meta information in snapshot/timestamp according to input.
 
-        Returns metafiles that were removed from repository (Targets or Snapshot)
+        Returns a tuple:
+         - True if a new snapshot was created
+         - metafiles for targets metadata that were removed from repository
         """
 
         # Snapshot update is needed if
@@ -95,8 +97,6 @@ class Repository(ABC):
         removed: Dict[str, MetaFile] = {}
 
         with self.edit("snapshot") as snapshot:
-            old_snapshot_version = snapshot.version
-
             for keyname, new_meta in current_targets.items():
                 if keyname not in snapshot.meta:
                     updated_snapshot = True
@@ -119,14 +119,26 @@ class Repository(ABC):
             logger.info("Snapshot update not needed")
         else:
             logger.info(f"Snapshot updated with {len(snapshot.meta)} targets")
-            # Timestamp update (also add old snapshot to removed)
-            with self.edit("timestamp") as timestamp:
-                timestamp.snapshot_meta = MetaFile(snapshot.version)
-            removed["snapshot.json"] = MetaFile(old_snapshot_version)
 
-            logger.info("Timestamp updated")
+        return updated_snapshot, removed
 
-        return removed
+    def timestamp(self, snapshot_version: int) -> Optional[int]:
+        """Update timestamp meta information
+
+        Updates timestamp with given snapshot version number.
+
+        Returns the snapshot version that was removed from repository (if any).
+        """
+        with self.edit("timestamp") as timestamp:
+            timestamp: Timestamp
+            old_snapshot_version = timestamp.snapshot_meta.version
+            timestamp.snapshot_meta = MetaFile(snapshot_version)
+
+        logger.info("Timestamp updated")
+        if old_snapshot_version == snapshot_version:
+            return None
+        return old_snapshot_version
+
 
     def add_target(self, role, follow_delegations: bool, targetfile: TargetFile) -> str:
         """Adds a file to the repository as a target

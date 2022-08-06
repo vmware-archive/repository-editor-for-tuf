@@ -112,9 +112,15 @@ def verify(ctx: Context, root_hash: Optional[str] = None):
 @cli.command()
 @click.pass_context
 def snapshot(ctx: Context):
-    """Update snapshot and timestamp meta information"""
-    ctx.obj.repo.snapshot()
+    """Update both snapshot and timestamp meta information if needed"""
+    if ctx.obj.repo.snapshot():
+        ctx.obj.repo.timestamp()
 
+@cli.command()
+@click.pass_context
+def timestamp(ctx: Context):
+    """Update timestamp meta information"""
+    ctx.obj.repo.timestamp()
 
 @cli.command()
 @click.pass_context

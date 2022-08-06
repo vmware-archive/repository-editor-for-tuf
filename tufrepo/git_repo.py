@@ -103,15 +103,17 @@ class GitRepository(Repository):
         md.signed.unrecognized_fields["x-tufrepo-expiry-period"] = period
         self._save(role, md)
 
-    def snapshot(self):
-        """Update snapshot and timestamp meta information
+    def snapshot(self) -> bool:
+        """Update snapshot meta information
 
-        This command only updates the meta information in snapshot/timestamp
+        This command only updates the meta information in snapshot
         according to current filenames: it does not validate those files in any
         way. Run 'verify' after 'snapshot' to validate repository state.
 
-        Deletes snapshot and targets files once they are no longer part of the
+        Deletes targets files once they are no longer part of the
         repository.
+
+        Returns False if a new snapshot version was not needed, True otherwise.
         """
 
         # Find targets role name and newest version
@@ -128,12 +130,33 @@ class GitRepository(Repository):
             if not curr_role or version > curr_role.version:
                 targets_roles[keyname] = MetaFile(version)
 
-        removed = super().snapshot(targets_roles)
+        updated, removed = super().snapshot(targets_roles)
 
         # delete the removed files (if any)
         for keyname, meta in removed.items():
             with suppress(FileNotFoundError):
                 os.remove(f"{meta.version}.{keyname}")
+
+        return updated
+
+    def timestamp(self):
+        """Update timestamp meta information
+
+        Deletes the old snapshot file once it's no longer part of the
+        repository.
+        """
+
+        # NOTE: we trust the version in the filename to be correct here
+        current_version = 0
+        for filename in glob.glob("*.snapshot.json"):
+            version, _ = filename[: -len(".json")].split(".")
+            current_version = max(current_version, int(version))
+
+        old_snapshot_version = super().timestamp(current_version)
+
+        if old_snapshot_version:
+            with suppress(FileNotFoundError):
+                os.remove(f"{old_snapshot_version}.snapshot.json")
 
     @contextmanager
     def edit(self, role: str) -> Generator[Signed, None, None]:
