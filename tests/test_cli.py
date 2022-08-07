@@ -40,9 +40,9 @@ class TestCLI(unittest.TestCase):
         if expected_out is not None:
            self.assertEqual(proc.stdout, expected_out)
         if expected_err is not None:
-            if expected_err not in proc.stderr:
+            if proc.stderr != expected_err:
                 print(proc.stderr)
-            self.assertIn(expected_err, proc.stderr)
+            self.assertEqual(proc.stderr, expected_err)
             self.assertEqual(proc.returncode, 1)
         else:
             self.assertEqual(proc.returncode, 0)
@@ -350,21 +350,28 @@ class TestCLI(unittest.TestCase):
         self._run(
             "edit targets add-delegation --path a/b --succinct 32 bin",
             "",
-            expected_err= "Not allowed to set delegated role options and the succinct option"
+            "Error: Not allowed to set delegated role options and the succinct option\n"
         )
 
         # Adding succinct hash delegation with zero bin amount.
         self._run(
             "edit targets add-delegation --succinct 0 bin",
             "",
-            "Succinct number must be at least 2"
+            "Error: Succinct number must be at least 2\n"
         )
 
         # Adding succinct delegation with bin amount that is not a power of 2.
         self._run(
-            "edit targets add-delegation --succinct 3 bin",
+            "edit targets add-delegation --succinct 10 bin",
             "",
-            "Succinct number must be a power of 2"
+            "Error: Succinct number must be a power of 2\n"
+        )
+
+        # Running add-delegation without path, hash_prefix or succinct option
+        self._run(
+            "edit targets add-delegation delegate",
+            "",
+            "Error: Either paths/hash_prefix options must be set or succinct option\n"
         )
 
 if __name__ == '__main__':
