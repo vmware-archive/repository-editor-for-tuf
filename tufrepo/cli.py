@@ -94,9 +94,16 @@ def init(ctx: Context):
 
 @cli.command()
 @click.pass_context
+@click.option("--all-targets", is_flag=True, default=False)
 @click.argument("roles", nargs=-1)
-def sign(ctx: Context, roles: Tuple[str]):
-    """Sign the given roles, using all usable keys in keyring"""
+def sign(ctx: Context, all_targets: bool, roles: Tuple[str]):
+    """Sign the given roles, using all usable keys in keyring
+
+    If --all-targets is used, will sign all targets roles that have usable keys
+    in the keyring"""
+    if all_targets:
+        skip = ["root", "timestamp", "snapshot"]
+        roles = [r for r in ctx.obj.repo.keyring if r not in skip]
     for role in roles:
         ctx.obj.repo.sign(role)
 
