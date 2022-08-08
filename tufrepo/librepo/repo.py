@@ -6,68 +6,68 @@
 import logging
 
 from abc import abstractmethod, ABC
-from contextlib import contextmanager
-from datetime import datetime
+from contextlib import contextmanager, suppress
 from typing import Dict, Generator, List, Optional, Tuple
 
-from tuf.api.metadata import Metadata, MetaFile, Signed, TargetFile, Targets, Timestamp
-
-from tufrepo.librepo.keys import Keyring
+from tuf.api.metadata import MetaFile, Signed, Snapshot, TargetFile, Targets, Timestamp
 
 logger = logging.getLogger("tufrepo")
 
 class AbortEdit(Exception):
     pass
 
-class Repository(ABC):
+class MetadataDescriptor(ABC):
+    """Handle for a Metadata object, returned from Repository.open()
 
-    def _sign_role(self, role: str, metadata: Metadata, clear_sigs: bool):
-        if clear_sigs:
-            metadata.signatures.clear()
-
-        try:
-            for key in self.keyring[role]:
-                keyid = key.public.keyid
-                logger.info("Signing role %s with key %s", role, keyid[:7])
-                metadata.sign(key.signer, append=True)
-        except KeyError:
-            logger.info(f"No keys for role %s found in keyring", role)
+    Allows access to 'signed' for editing, and provides close() as a way to
+    finish the edit (update expiry, version) and write the metadata to storage.
+    """
 
     @property
     @abstractmethod
-    def keyring(self) -> Keyring:
-        """return a Keyring containing the private keys needed for signing"""
+    def signed(self) -> Signed:
+        """Signed object for the metadata, intended for modifications"""
         raise NotImplementedError
 
     @abstractmethod
-    def _load(self, role:str) -> Metadata:
-        """Load metadata from storage or cache"""
+    def close(self, sign_only: bool = False):
+        """Write metadata into storage
 
-    @abstractmethod
-    def _save(self, role: str, md: Metadata, clear_sigs: bool = True):
-        """Sign and persist metadata in storage"""
+        If sign_only, then just append signatures of all available keys.
 
+        If not sign_only, update expiry and version and replace signatures
+        with ones from all available keys."""
+        raise NotImplementedError
+
+class Repository(ABC):
     @abstractmethod
-    def init_role(self, role:str, period: int):
-        """Initialize new metadata"""
+    def open(self, role:str, init: bool = False) -> MetadataDescriptor:
+        """Load a metadata from storage or cache, return a handle to it
+
+        If 'init', then create metadata from scratch"""
+        raise NotImplementedError
 
     @contextmanager
-    @abstractmethod
-    def edit(self, role:str) -> Generator[Signed, None, None]:
+    def edit(self, role:str, init: bool = False) -> Generator[Signed, None, None]:
         """Context manager for editing a roles metadata
 
-        Context manager takes care of loading the roles metadata, updating expiry
-        and version. The caller can do other changes to the Signed object and when
-        the context manager exits, a new version of the roles metadata is stored.
+        Context manager takes care of loading the roles metadata (or creating
+        new metadata if 'init'), updating expiry and version. The caller can do
+        other changes to the Signed object and when the context manager exits,
+        a new version of the roles metadata is stored.
 
         Context manager user can raise AbortEdit from inside thw with-block to
         cancel the edit: in this case none of the changes are stored.
         """
+        md_desc = self.open(role, init)
+        with suppress(AbortEdit):
+            yield md_desc.signed
+            md_desc.close()
 
     def sign(self, role: str):
         """sign without modifying content, or removing existing signatures"""
-        md = self._load(role)
-        self._save(role, md, False)
+        md_desc = self.open(role)
+        md_desc.close(sign_only=True)
 
     def snapshot(self, current_targets: Dict[str, MetaFile]) -> Tuple[bool, Dict[str, MetaFile]]:
         """Update snapshot and timestamp meta information
@@ -85,6 +85,7 @@ class Repository(ABC):
         updated_snapshot = False
         removed: Dict[str, MetaFile] = {}
 
+        snapshot: Snapshot
         with self.edit("snapshot") as snapshot:
             for keyname, new_meta in current_targets.items():
                 if keyname not in snapshot.meta:
@@ -118,8 +119,8 @@ class Repository(ABC):
 
         Returns the snapshot that was removed from repository (if any).
         """
+        timestamp: Timestamp
         with self.edit("timestamp") as timestamp:
-            timestamp: Timestamp
             old_snapshot_meta = timestamp.snapshot_meta
             timestamp.snapshot_meta = snapshot_meta
 
@@ -140,9 +141,8 @@ class Repository(ABC):
         # special case delegation search: if follow_delegations, then we look
         # for the first "leaf" targets role (that does not delegate further)
         while True:
+            targets: Targets
             with self.edit(role) as targets:
-                targets: Targets
-
                 if targets.delegations and follow_delegations:
                     # see if target path is delegated (always pick first valid delegation)
                     delegations = targets.delegations.get_roles_for_target(targetfile.path)
@@ -170,9 +170,8 @@ class Repository(ABC):
         # Delegation search here works like the one in tuf.ngclient
         while roles:
             role = roles.pop(-1)
+            targets: Targets
             with self.edit(role) as targets:
-                targets: Targets
-
                 if target_path in targets.targets:
                     del targets.targets[target_path]
                     return role

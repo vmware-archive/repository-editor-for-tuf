@@ -79,17 +79,17 @@ def init(ctx: Context):
     # Use expiry period of 1 year for everything
     period = int(timedelta(days=365).total_seconds())
 
-    ctx.obj.repo.init_role("root", period)
-
-    with ctx.obj.repo.edit("root") as root:
+    with ctx.obj.repo.edit("root", init=True) as root:
+        root.unrecognized_fields["x-tufrepo-expiry-period"] = period
         for role in ["root", "timestamp", "snapshot", "targets"]:
             key: PrivateKey = ctx.obj.keyring.generate_key()
             root.add_key(key.public, role)
             ctx.obj.keyring.store_key(role, key)
 
-    ctx.obj.repo.init_role("timestamp", period)
-    ctx.obj.repo.init_role("snapshot", period)
-    ctx.obj.repo.init_role("targets", period)
+    for role in ["timestamp", "snapshot", "targets"]:
+        with ctx.obj.repo.edit(role, init=True) as signed:
+            signed.unrecognized_fields["x-tufrepo-expiry-period"] = period
+
     ctx.obj.repo.snapshot()
 
 @cli.command()
@@ -160,7 +160,8 @@ def init_succinct_roles(ctx: Context, role: str):
 
             # Use expiry period of 1 year for everything
             period = int(timedelta(days=365).total_seconds())
-            ctx.obj.repo.init_role(bin_name, period)
+            with ctx.obj.repo.edit(bin_name, init=True) as signed:
+                signed.unrecognized_fields["x-tufrepo-expiry-period"] = period
 
 
 
@@ -254,7 +255,8 @@ def init(ctx: Context, expiry: Tuple[int, str]):
     tufrepo edit root init --expiry 52 weeks"""
     delta = timedelta(**{expiry[1]: expiry[0]})
     period = int(delta.total_seconds())
-    ctx.obj.repo.init_role(ctx.obj.role, period)
+    with ctx.obj.repo.edit(ctx.obj.role, init=True) as signed:
+        signed.unrecognized_fields["x-tufrepo-expiry-period"] = period
 
 
 @edit.command()
@@ -281,7 +283,6 @@ def set_expiry(ctx: Context, expiry: Tuple[int, str]):
     period = int(delta.total_seconds())
 
     with ctx.obj.repo.edit(ctx.obj.role) as signed:
-        # This should maybe be a repo feature? argument to edit?
         signed.unrecognized_fields["x-tufrepo-expiry-period"] = period
 
 
