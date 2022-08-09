@@ -8,7 +8,7 @@ import logging
 from abc import abstractmethod, ABC
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Dict, Generator, Optional, Tuple
+from typing import Dict, Generator, List, Optional, Tuple
 
 from tuf.api.metadata import Metadata, MetaFile, Signed, TargetFile, Targets, Timestamp
 
@@ -128,8 +128,7 @@ class Repository(ABC):
             return None
         return old_snapshot_version
 
-
-    def add_target(self, role, follow_delegations: bool, targetfile: TargetFile) -> str:
+    def add_target(self, role:str, follow_delegations: bool, targetfile: TargetFile) -> str:
         """Adds a file to the repository as a target
 
         role: name of targets role that is the starting point for the targets-role search
@@ -180,7 +179,7 @@ class Repository(ABC):
 
                 # target file was not found in this metadata: try delegations
                 if targets.delegations and follow_delegations:
-                    child_roles = []
+                    child_roles: List[str] = []
                     for (
                         child, terminating
                     ) in targets.delegations.get_roles_for_target(target_path):
