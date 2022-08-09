@@ -111,22 +111,22 @@ class Repository(ABC):
 
         return updated_snapshot, removed
 
-    def timestamp(self, snapshot_version: int) -> Optional[int]:
+    def timestamp(self, snapshot_meta: MetaFile) -> Optional[MetaFile]:
         """Update timestamp meta information
 
-        Updates timestamp with given snapshot version number.
+        Updates timestamp with given snapshot information.
 
-        Returns the snapshot version that was removed from repository (if any).
+        Returns the snapshot that was removed from repository (if any).
         """
         with self.edit("timestamp") as timestamp:
             timestamp: Timestamp
-            old_snapshot_version = timestamp.snapshot_meta.version
-            timestamp.snapshot_meta = MetaFile(snapshot_version)
+            old_snapshot_meta = timestamp.snapshot_meta
+            timestamp.snapshot_meta = snapshot_meta
 
         logger.info("Timestamp updated")
-        if old_snapshot_version == snapshot_version:
+        if old_snapshot_meta.version == snapshot_meta.version:
             return None
-        return old_snapshot_version
+        return old_snapshot_meta
 
     def add_target(self, role:str, follow_delegations: bool, targetfile: TargetFile) -> str:
         """Adds a file to the repository as a target

@@ -152,11 +152,11 @@ class GitRepository(Repository):
             version, _ = filename[: -len(".json")].split(".")
             current_version = max(current_version, int(version))
 
-        old_snapshot_version = super().timestamp(current_version)
+        old_snapshot_meta = super().timestamp(MetaFile(current_version))
 
-        if old_snapshot_version:
+        if old_snapshot_meta:
             with suppress(FileNotFoundError):
-                os.remove(f"{old_snapshot_version}.snapshot.json")
+                os.remove(f"{old_snapshot_meta.version}.snapshot.json")
 
     @contextmanager
     def edit(self, role: str) -> Generator[Signed, None, None]:
