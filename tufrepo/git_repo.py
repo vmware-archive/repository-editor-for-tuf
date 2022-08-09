@@ -8,7 +8,7 @@ import logging
 import os
 import subprocess
 
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta
 from typing import Dict, Generator, List, Optional
 
@@ -26,7 +26,6 @@ from tuf.api.metadata import (
 )
 from tuf.api.serialization.json import JSONSerializer
 
-from tufrepo import helpers
 from tufrepo.librepo.repo import AbortEdit, Repository
 from tufrepo.librepo.keys import Keyring
 
@@ -104,12 +103,17 @@ class GitRepository(Repository):
         md.signed.unrecognized_fields["x-tufrepo-expiry-period"] = period
         self._save(role, md)
 
-    def snapshot(self):
-        """Update snapshot and timestamp meta information
+    def snapshot(self) -> bool:
+        """Update snapshot meta information
 
-        This command only updates the meta information in snapshot/timestamp
+        This command only updates the meta information in snapshot
         according to current filenames: it does not validate those files in any
         way. Run 'verify' after 'snapshot' to validate repository state.
+
+        Deletes targets files once they are no longer part of the
+        repository.
+
+        Returns False if a new snapshot version was not needed, True otherwise.
         """
 
         # Find targets role name and newest version
@@ -126,21 +130,39 @@ class GitRepository(Repository):
             if not curr_role or version > curr_role.version:
                 targets_roles[keyname] = MetaFile(version)
 
-        removed = super().snapshot(targets_roles)
+        updated, removed = super().snapshot(targets_roles)
 
+        # delete the removed files (if any)
         for keyname, meta in removed.items():
-            # delete the older file (if any): it is not part of snapshot
-            try:
+            with suppress(FileNotFoundError):
                 os.remove(f"{meta.version}.{keyname}")
-            except FileNotFoundError:
-                pass
+
+        return updated
+
+    def timestamp(self):
+        """Update timestamp meta information
+
+        Deletes the old snapshot file once it's no longer part of the
+        repository.
+        """
+
+        # NOTE: we trust the version in the filename to be correct here
+        current_version = 0
+        for filename in glob.glob("*.snapshot.json"):
+            version, _ = filename[: -len(".json")].split(".")
+            current_version = max(current_version, int(version))
+
+        old_snapshot_meta = super().timestamp(MetaFile(current_version))
+
+        if old_snapshot_meta:
+            with suppress(FileNotFoundError):
+                os.remove(f"{old_snapshot_meta.version}.snapshot.json")
 
     @contextmanager
     def edit(self, role: str) -> Generator[Signed, None, None]:
         md = self._load(role)
         version = md.signed.version
         old_filename = self._get_filename(role, version)
-        remove_old = False
 
         # Find out expiry and need for version bump
         try:
@@ -154,20 +176,22 @@ class GitRepository(Repository):
         diff_cmd = ["diff", "--exit-code", "--no-patch", "--", old_filename]
         if os.path.exists(old_filename) and self._git(diff_cmd) == 0:
             version += 1
-            # only snapshots need deleting (targets are deleted in snapshot())
-            if role == "snapshot":
-                remove_old = True
 
-        try:
-            with super()._edit(role, expiry, version) as signed:
-                yield signed
-        except AbortEdit:
-            pass # caller aborted edit
-        else:
-            if remove_old:
-                os.remove(old_filename)
+        # Yield for editing but allow user to cancel by raising AbortEdit
+        with suppress(AbortEdit):
+            yield md.signed
+            md.signed.expires = expiry
+            md.signed.version = version
+            self._save(role, md)
 
-    def add_target(self, role, follow_delegations: bool, target_in_repo: bool, target_path: str, local_file: str) -> str:
+    def add_target(
+        self,
+        role,
+        follow_delegations: bool,
+        target_in_repo: bool,
+        target_path: str,
+        local_file: str,
+    ) -> str:
         """Adds a file to the repository as a target
 
         role: name of targets role that is the starting point for the targets-role search
@@ -176,33 +200,19 @@ class GitRepository(Repository):
 
         Returns the name of the role the target was actually added into
         """
-        targetfile = None
 
-        while not targetfile:
-            with self.edit(role) as targets:
-                targets: Targets
+        targetfile = TargetFile.from_file(target_path, local_file)
+        final_role = super().add_target(role, follow_delegations, targetfile)
 
-                if targets.delegations and follow_delegations:
-                    # see if target path is delegated (always pick first valid delegation)
-                    delegations = targets.delegations.get_roles_for_target(target_path)
-                    new_role, _ = next(delegations, (None, None))
-                    if new_role:
-                        role = new_role
-                        raise AbortEdit("Skip add-target: use delegation instead")
+        # Add the actual file to git and create hash-prefixed symlinks
+        if target_in_repo:
+            self._git(["add", "--intent-to-add", local_file])
+            for h in targetfile.hashes.values():
+                dir, src_file = os.path.split(local_file)
+                dst = os.path.join(dir, f"{h}.{src_file}")
+                if os.path.islink(dst):
+                    os.remove(dst)
+                os.symlink(src_file, dst)
+                self._git(["add", "--intent-to-add", dst])
 
-                # role does not delegate further: add the target
-                targetfile = TargetFile.from_file(target_path, local_file)
-                targets.targets[targetfile.path] = targetfile
-
-                if target_in_repo:
-                    self._git(["add", "--intent-to-add", local_file])
-                    # create hash-symlinks for target file
-                    for h in targetfile.hashes.values():
-                        dir, src_file = os.path.split(local_file)
-                        dst = os.path.join(dir, f"{h}.{src_file}")
-                        if os.path.islink(dst):
-                            os.remove(dst)
-                        os.symlink(src_file, dst)
-                        self._git(["add", "--intent-to-add", dst])
-
-        return role
+        return final_role

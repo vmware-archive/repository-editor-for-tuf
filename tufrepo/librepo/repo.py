@@ -8,9 +8,9 @@ import logging
 from abc import abstractmethod, ABC
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Dict, Generator
+from typing import Dict, Generator, List, Optional, Tuple
 
-from tuf.api.metadata import Metadata, MetaFile, Signed
+from tuf.api.metadata import Metadata, MetaFile, Signed, TargetFile, Targets, Timestamp
 
 from tufrepo.librepo.keys import Keyring
 
@@ -69,30 +69,21 @@ class Repository(ABC):
         md = self._load(role)
         self._save(role, md, False)
 
-    @contextmanager
-    def _edit(self, role:str, expiry: datetime, version: int) -> Generator[Signed, None, None]:
-        """Helper function for edit() implementations"""
-        md = self._load(role)
-
-        yield md.signed
-
-        md.signed.expires = expiry
-        md.signed.version = version
-        self._save(role, md)
-
-    def snapshot(self, current_targets: Dict[str, MetaFile]) -> Dict[str, MetaFile]:
+    def snapshot(self, current_targets: Dict[str, MetaFile]) -> Tuple[bool, Dict[str, MetaFile]]:
         """Update snapshot and timestamp meta information
 
         Updates the meta information in snapshot/timestamp according to input.
 
-        Returns the targets metafiles that were removed from snapshot
+        Returns a tuple:
+         - True if a new snapshot was created
+         - metafiles for targets metadata that were removed from repository
         """
 
         # Snapshot update is needed if
         # * any targets files are not in snapshot or
         # * any targets version is incorrect
         updated_snapshot = False
-        removed_targets: Dict[str, MetaFile] = {}
+        removed: Dict[str, MetaFile] = {}
 
         with self.edit("snapshot") as snapshot:
             for keyname, new_meta in current_targets.items():
@@ -107,7 +98,7 @@ class Repository(ABC):
                 elif new_meta.version > old_meta.version:
                     updated_snapshot = True
                     snapshot.meta[keyname] = new_meta
-                    removed_targets[keyname] = old_meta
+                    removed[keyname] = old_meta
 
             if not updated_snapshot:
                 # prevent edit() from saving a new snapshot version
@@ -117,9 +108,89 @@ class Repository(ABC):
             logger.info("Snapshot update not needed")
         else:
             logger.info(f"Snapshot updated with {len(snapshot.meta)} targets")
-            # Timestamp update
-            with self.edit("timestamp") as timestamp:
-                timestamp.snapshot_meta = MetaFile(snapshot.version)
-            logger.info("Timestamp updated")
 
-        return removed_targets
+        return updated_snapshot, removed
+
+    def timestamp(self, snapshot_meta: MetaFile) -> Optional[MetaFile]:
+        """Update timestamp meta information
+
+        Updates timestamp with given snapshot information.
+
+        Returns the snapshot that was removed from repository (if any).
+        """
+        with self.edit("timestamp") as timestamp:
+            timestamp: Timestamp
+            old_snapshot_meta = timestamp.snapshot_meta
+            timestamp.snapshot_meta = snapshot_meta
+
+        logger.info("Timestamp updated")
+        if old_snapshot_meta.version == snapshot_meta.version:
+            return None
+        return old_snapshot_meta
+
+    def add_target(self, role:str, follow_delegations: bool, targetfile: TargetFile) -> str:
+        """Adds a file to the repository as a target
+
+        role: name of targets role that is the starting point for the targets-role search
+        follow_delegations: should delegations under role be followed to find the correct targets-role
+
+        Returns the name of the role the target was actually added into
+        """
+
+        # special case delegation search: if follow_delegations, then we look
+        # for the first "leaf" targets role (that does not delegate further)
+        while True:
+            with self.edit(role) as targets:
+                targets: Targets
+
+                if targets.delegations and follow_delegations:
+                    # see if target path is delegated (always pick first valid delegation)
+                    delegations = targets.delegations.get_roles_for_target(targetfile.path)
+                    new_role, _ = next(delegations, (None, None))
+                    if new_role:
+                        role = new_role
+                        raise AbortEdit("Skip add-target: use delegation instead")
+
+                # role does not delegate further: add the target
+                targets.targets[targetfile.path] = targetfile
+                return role
+
+    def remove_target(self, role: str, follow_delegations: bool, target_path: str) -> Optional[str]:
+        """Removes a file from the repository
+
+        role: name of targets role that is the starting point for the targets-role search
+        follow_delegations: should delegations under role be followed to find the correct targets-role
+
+        Returns the name of the role the target was actually removed from (or
+        None if nothing was removed)
+        """
+        targetfile = None
+        roles = [role]
+
+        # Delegation search here works like the one in tuf.ngclient
+        while roles:
+            role = roles.pop(-1)
+            with self.edit(role) as targets:
+                targets: Targets
+
+                if target_path in targets.targets:
+                    del targets.targets[target_path]
+                    return role
+
+                # target file was not found in this metadata: try delegations
+                if targets.delegations and follow_delegations:
+                    child_roles: List[str] = []
+                    for (
+                        child, terminating
+                    ) in targets.delegations.get_roles_for_target(target_path):
+                        child_roles.append(child)
+                        if terminating:
+                            # prevent further delegation search
+                            roles.clear()
+                            break
+                    roles.extend(reversed(child_roles))
+
+                raise AbortEdit("skipping remove-target: target not found in metadata")
+
+        # No target found
+        return None

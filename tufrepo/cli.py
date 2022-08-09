@@ -119,9 +119,15 @@ def verify(ctx: Context, root_hash: Optional[str] = None):
 @cli.command()
 @click.pass_context
 def snapshot(ctx: Context):
-    """Update snapshot and timestamp meta information"""
-    ctx.obj.repo.snapshot()
+    """Update both snapshot and timestamp meta information if needed"""
+    if ctx.obj.repo.snapshot():
+        ctx.obj.repo.timestamp()
 
+@cli.command()
+@click.pass_context
+def timestamp(ctx: Context):
+    """Update timestamp meta information"""
+    ctx.obj.repo.timestamp()
 
 @cli.command()
 @click.pass_context
@@ -190,6 +196,30 @@ def add_target(
         role, not no_follow_delegations, not no_target_in_repo, target_path, local_file
     )
     print(f"Added '{target_path}' as target to role '{final_role}'")
+
+
+@cli.command
+@click.pass_context
+@click.option("--no-follow-delegations", is_flag=True, default=False)
+@click.option("--role", default="targets", metavar="ROLE", show_default=True)
+@click.argument("target-path")
+def remove_target(
+    ctx: Context,
+    no_follow_delegations: bool,
+    role: str,
+    target_path: str,
+    ):
+    """Remove target file from the repository"""
+
+    final_role = ctx.obj.repo.remove_target(
+        role, not no_follow_delegations, target_path
+    )
+
+    if not final_role:
+        print(f"Target {target_path} not found")
+    else:
+        print(f"Removed {target_path} from role {final_role}.")
+        print("Actual target files have not been removed")
 
 
 
@@ -282,19 +312,6 @@ def remove_key(ctx: Context, delegate: str, keyid: str):
     with ctx.obj.repo.edit(delegator) as signed:
         helpers.remove_key(signed, delegator, delegate, keyid)
 
-
-
-@edit.command()
-@click.pass_context
-@click.argument("target-path")
-def remove_target(ctx: Context, target_path: str):
-    """Remove TARGET from a Targets role ROLE"""
-
-    targets: Targets
-    with ctx.obj.repo.edit(ctx.obj.role) as targets:
-        del targets.targets[target_path]
-    print(f"Removed {target_path} from {ctx.obj.role}.")
-    print("Actual target files have not been removed")
 
 
 @edit.command()

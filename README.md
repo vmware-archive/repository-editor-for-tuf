@@ -30,33 +30,49 @@ experimental and unstable:
 
 The tufrepo tool works in a git-stored TUF metadata directory: metadata files
 are automatically added to git. Git is used for a few reasons:
- * This means the tool needs no state tracking as git knows whether a file
-   has been modified already
- * Reviewing changes, committing them as logical chunks and reverting wrong
+ * Tool needs no state tracking as git knows if file has been modified
+ * Reviewing changes, combining changes to logical chunks and reverting wrong
    changes becomes easy
  * publishing and sharing repositories (and even running tufrepo on CI)
    is possible
 
 ### Commands are used to edit metadata
 
-'init' command initializes a new repository: the same results can be achieved
-with individually editing each top level role, 'init' is just a short cut.
-
-The 'edit' command modifies a single metadata file (there are many
-sub-commands, see examples). The 'snapshot' command updates the repository
-snapshot and timestamp. During 'edit' and 'snapshot' commands the tool takes
-care of:
+While editing, the tool takes care of:
  * expiry updates
- * metadata version numbers
- * file name changes
- * signing (with all private keys available)
+ * version number updates
+ * file name changes, deleting obsolete files
+ * signing (with all appropriate private keys that available)
 
-The 'sign' command signs metadata without otherwise modifying it.
-Signing happens automatically during 'edit' and 'snapshot' but sometimes
-all keys are not available at edit time -- in these cases signing without
-modifying the signed content is useful.
+Following commands are available to user:
 
-The 'verify' command verifies repository validity.
+| Command               | Description
+| ---                   | ---
+| `init`                | Initialize a minimal repository from scratch
+| `add-target`          | Add target file to the repository
+| `remove-target`       | Remove target file from the repository
+| `snapshot`            | Update snapshot and timestamp meta information
+| `sign`                | Sign roles (without otherwise modifying them)
+| `init-succinct-roles` | Initialize delegated roles for a succinct delegation
+| `verify`              | Verify the current status of the repository
+| `edit`                | Edit a role with subcommands listed below
+
+A specific role can be edited with following edit-subcommands:
+
+| Edit sub-command    | Description
+| ---                 | ---
+| `init`              | Create new metadata for role
+| `add-delegation`    | Delegate from role to another role
+| `remove-delegation` | Remove delegation to another role
+| `add-key`           | Add new signing key for a delegated role
+| `remove-key`        | Remove signing key for a delegated role
+| `set-threshold`     | Set the threshold of delegated role
+| `set-expiry`        | Set expiry period for the role
+| `touch`             | No changes, just update version and expiry
+
+When editing, the results can be checked with `git diff` and then committed
+with `git commit -a`. Note that git status affects the automatic version number
+changes: version number is bumped once per git changeset.
 
 ### Key management
 

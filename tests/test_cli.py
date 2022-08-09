@@ -195,9 +195,9 @@ class TestCLI(unittest.TestCase):
         self.assertStartsWith(proc.stdout, "Metadata with 1 delegated targets verified")
         self.assertEqual(set(os.listdir(self.cwd)), files)
 
-        # Remove a target, update snapshot
-        proc = self._run("edit role1 remove-target files/new-target", expected_out=None)
-        self.assertStartsWith(proc.stdout, "Removed files/new-target")
+        # Remove a target (without delegation search), update snapshot
+        proc = self._run("remove-target --no-follow-delegations --role role1 files/new-target", expected_out=None)
+        self.assertStartsWith(proc.stdout, "Removed files/new-target ")
         self._run("snapshot")
         subprocess.run(["git", "commit", "-a", "-m", "Remove target"], cwd=self.cwd, capture_output=True)
 
@@ -314,6 +314,16 @@ class TestCLI(unittest.TestCase):
         files |= {"5.snapshot.json", "2.bin-1.json"}
         self.assertEqual(set(os.listdir(self.cwd)), files)
 
+        # Remove target using delegation search
+        proc = self._run("remove-target target/path", None)
+        self.assertStartsWith(proc.stdout, "Removed target/path from role bin-1")
+        self._run("snapshot")
+        subprocess.run(["git", "commit", "-a", "-m", "Remove target from delegated bin"], cwd=self.cwd, capture_output=True)
+
+        # expect that target was removed from bin-1 because of delegation
+        files -= {"5.snapshot.json", "2.bin-1.json"}
+        files |= {"6.snapshot.json", "3.bin-1.json"}
+
         # Delegate to a new role in targets removing the succinct hash info.
         self._run("edit targets add-delegation --path 'files/*' role1")
         self._run("edit targets add-key role1")
@@ -322,8 +332,8 @@ class TestCLI(unittest.TestCase):
         # Update snapshot to use new targets metadata without the succint info.
         self._run("snapshot")
 
-        files -= {"5.snapshot.json", "4.targets.json"}
-        files |= {"6.snapshot.json", "5.targets.json", "1.role1.json"}
+        files -= {"6.snapshot.json", "4.targets.json"}
+        files |= {"7.snapshot.json", "5.targets.json", "1.role1.json"}
         self.assertEqual(set(os.listdir(self.cwd)), files)
 
         # Remove all bins as "targets" doesn't delegate to them anymore.
