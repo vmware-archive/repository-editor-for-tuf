@@ -325,15 +325,15 @@ class TestCLI(unittest.TestCase):
         files |= {"6.snapshot.json", "3.bin-1.json"}
 
         # Delegate to a new role in targets removing the succinct hash info.
-        self._run("edit targets add-delegation --path 'files/*' role1")
-        self._run("edit targets add-key role1")
-        self._run("edit role1 init")
+        self._run("edit targets add-delegation --path 'files/*' role3")
+        self._run("edit targets add-key role3")
+        self._run("edit role3 init")
 
         # Update snapshot to use new targets metadata without the succint info.
         self._run("snapshot")
 
         files -= {"6.snapshot.json", "4.targets.json"}
-        files |= {"7.snapshot.json", "5.targets.json", "1.role1.json"}
+        files |= {"7.snapshot.json", "5.targets.json", "1.role3.json"}
         self.assertEqual(set(os.listdir(self.cwd)), files)
 
         # Remove all bins as "targets" doesn't delegate to them anymore.

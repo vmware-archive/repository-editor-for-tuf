@@ -4,9 +4,8 @@
 """Some helpers for editing Metadata"""
 
 from click.exceptions import ClickException
-from datetime import datetime
 
-from tuf.api.metadata import Key, Metadata, Root, Signed, Targets
+from tuf.api.metadata import Key, Root, Signed, Targets
 
 
 def set_threshold(self: Signed, delegate: str, threshold: int):

@@ -8,9 +8,9 @@ import logging
 import os
 import subprocess
 
-from contextlib import contextmanager, suppress
+from contextlib import suppress
 from datetime import datetime, timedelta
-from typing import Dict, Generator, List, Optional
+from typing import Dict, List, Optional
 
 from click.exceptions import ClickException
 from securesystemslib.exceptions import StorageError
@@ -26,7 +26,7 @@ from tuf.api.metadata import (
 )
 from tuf.api.serialization.json import JSONSerializer
 
-from tufrepo.librepo.repo import AbortEdit, Repository
+from tufrepo.librepo.repo import MetadataDescriptor, Repository
 from tufrepo.librepo.keys import Keyring
 
 logger = logging.getLogger("tufrepo")
@@ -39,28 +39,36 @@ _signed_init = {
 }
 
 
-class GitRepository(Repository):
-    """Manages loading, saving (signing) repository metadata in files stored in git"""
+def _git(command: List[str]):
+    """Helper to run git commands in the repository git repo"""
+    full_cmd = ["git"] + command
+    proc = subprocess.run(full_cmd)
+    return proc.returncode
 
-    def __init__(self, keyring: Keyring):
+class GitMetadata(MetadataDescriptor):
+    def __init__(self, role: str, keyring: Keyring, init: bool = False):
+        self._role = role
         self._keyring = keyring
+        self._fname = self._get_filename(role)
+        if init:
+            # safety check
+            filenames = glob.glob(f"*.{role}.json")
+            versions = [int(name.split(".", 1)[0]) for name in filenames]
+            if versions:
+                raise ValueError(f"cannot initialize {role} as versions already exist")
+
+            signed_init = _signed_init.get(role, Targets)
+            self._md = Metadata(signed_init())
+        else:
+            try:
+                self._md = Metadata.from_file(self._fname)
+            except StorageError as e:
+                raise ClickException(f"Failed to open {self._fname}.") from e
+        self._version = self.signed.version
 
     @property
-    def keyring(self) -> Keyring:
-        return self._keyring
-
-    @staticmethod
-    def _git(command: List[str]):
-        """Helper to run git commands in the repository git repo"""
-        full_cmd = ["git"] + command
-        proc = subprocess.run(full_cmd)
-        return proc.returncode
-
-    @staticmethod
-    def _get_expiry(expiry_period: int) -> datetime:
-        delta = timedelta(seconds=expiry_period)
-        now = datetime.utcnow().replace(microsecond=0)
-        return now + delta
+    def signed(self) -> Signed:
+        return self._md.signed
 
     @staticmethod
     def _get_filename(role: str, version: Optional[int] = None):
@@ -80,28 +88,49 @@ class GitRepository(Repository):
 
             return f"{version}.{role}.json"
 
-    def _load(self, role: str) -> Metadata:
-        fname = self._get_filename(role)
+    def _sign_role(self):
         try:
-            return Metadata.from_file(fname)
-        except StorageError as e:
-            raise ClickException(f"Failed to open {fname}.") from e
+            for key in self._keyring[self._role]:
+                keyid = key.public.keyid
+                logger.info("Signing role %s with key %s", self._role, keyid[:7])
+                self._md.sign(key.signer, append=True)
+        except KeyError:
+            logger.info(f"No keys for role %s found in keyring", self._role)
 
-    def _save(self, role: str, md: Metadata, clear_sigs: bool = True):
-        self._sign_role(role, md, clear_sigs)
+    def close(self, sign_only: bool = False):
+        if not sign_only:
+            # Find out expiry and need for version bump
+            try:
+                period = self.signed.unrecognized_fields["x-tufrepo-expiry-period"]
+            except KeyError:
+                raise ClickException(
+                    "Expiry period not found in metadata: use 'set-expiry'"
+                )
 
-        fname = self._get_filename(role, md.signed.version)
-        md.to_file(fname, JSONSerializer())
+            self.signed.expires = datetime.utcnow() + timedelta(seconds=period)
 
-        self._git(
-            ["add", "--intent-to-add", self._get_filename(role, md.signed.version)]
-        )
+            diff_cmd = ["diff", "--exit-code", "--no-patch", "--", self._fname]
+            if os.path.exists(self._fname) and _git(diff_cmd) == 0:
+                self.signed.version += 1
 
-    def init_role(self, role: str, period: int):
-        signed_init = _signed_init.get(role, Targets)
-        md = Metadata(signed_init(expires=self._get_expiry(period)))
-        md.signed.unrecognized_fields["x-tufrepo-expiry-period"] = period
-        self._save(role, md)
+            self._md.signatures.clear()
+
+        self._sign_role()
+
+        fname = self._get_filename(self._role, self.signed.version)
+        self._md.to_file(fname, JSONSerializer())
+        _git(["add", "--intent-to-add", fname])
+
+
+
+class GitRepository(Repository):
+    """Manages loading, saving (signing) repository metadata in files stored in git"""
+
+    def __init__(self, keyring: Keyring):
+        self._keyring = keyring
+
+    def open(self, role:str, init: bool = False) -> GitMetadata:
+        return GitMetadata(role, self._keyring, init)
 
     def snapshot(self) -> bool:
         """Update snapshot meta information
@@ -158,32 +187,6 @@ class GitRepository(Repository):
             with suppress(FileNotFoundError):
                 os.remove(f"{old_snapshot_meta.version}.snapshot.json")
 
-    @contextmanager
-    def edit(self, role: str) -> Generator[Signed, None, None]:
-        md = self._load(role)
-        version = md.signed.version
-        old_filename = self._get_filename(role, version)
-
-        # Find out expiry and need for version bump
-        try:
-            period = md.signed.unrecognized_fields["x-tufrepo-expiry-period"]
-        except KeyError:
-            raise ClickException(
-                "Expiry period not found in metadata: use 'set-expiry'"
-            )
-        expiry = self._get_expiry(period)
-
-        diff_cmd = ["diff", "--exit-code", "--no-patch", "--", old_filename]
-        if os.path.exists(old_filename) and self._git(diff_cmd) == 0:
-            version += 1
-
-        # Yield for editing but allow user to cancel by raising AbortEdit
-        with suppress(AbortEdit):
-            yield md.signed
-            md.signed.expires = expiry
-            md.signed.version = version
-            self._save(role, md)
-
     def add_target(
         self,
         role,
@@ -206,13 +209,13 @@ class GitRepository(Repository):
 
         # Add the actual file to git and create hash-prefixed symlinks
         if target_in_repo:
-            self._git(["add", "--intent-to-add", local_file])
+            _git(["add", "--intent-to-add", local_file])
             for h in targetfile.hashes.values():
                 dir, src_file = os.path.split(local_file)
                 dst = os.path.join(dir, f"{h}.{src_file}")
                 if os.path.islink(dst):
                     os.remove(dst)
                 os.symlink(src_file, dst)
-                self._git(["add", "--intent-to-add", dst])
+                _git(["add", "--intent-to-add", dst])
 
         return final_role
