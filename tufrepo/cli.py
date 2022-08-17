@@ -147,17 +147,7 @@ def init_succinct_roles(ctx: Context, role: str):
                 "'ROLE' doesn't contain information about succinct delegations"
             )
 
-        full_keys_info: List[PrivateKey] = []
-        for _ in range(targets.delegations.succinct_roles.threshold):
-            new_key: PrivateKey = ctx.obj.keyring.generate_key()
-            full_keys_info.append(new_key)
-            helpers.add_key(targets, role, None, new_key.public)
-
         for bin_name in targets.delegations.succinct_roles.get_roles():
-            # Store all generated keys for delegations for each of the bins.
-            for key in full_keys_info:
-                ctx.obj.keyring.store_key(bin_name, key)
-
             # Use expiry period of 1 year for everything
             period = int(timedelta(days=365).total_seconds())
             with ctx.obj.repo.edit(bin_name, init=True) as signed:
@@ -288,18 +278,41 @@ def set_expiry(ctx: Context, expiry: Tuple[int, str]):
 
 @edit.command()
 @click.pass_context
-@click.argument("delegate")
-def add_key(ctx: Context, delegate: str):
-    """Add new signing key for delegated role DELEGATE
+@click.argument("delegate", required=False)
+def add_key(ctx: Context, delegate: Optional[str]):
+    """Add a new signing key for a delegated role or succinct hash bin
+    delegations.
+
+    If a user wants to add a key to a single delegated role then the DELEGATE
+    string argument must be provided.
+
+    If DELEGATE argument is not provided tufrepo will assume you want to add
+    the new key to succinct hash bin delegation.
 
     The private key secret will be written to privkeys.json."""
     delegator = ctx.obj.role
     keyring: InsecureFileKeyring = ctx.obj.keyring
     key = keyring.generate_key()
 
-    with ctx.obj.repo.edit(delegator) as signed:
-        helpers.add_key(signed, delegator, delegate, key.public)
-    keyring.store_key(delegate, key)
+    targets: Targets
+    with ctx.obj.repo.edit(delegator) as targets:
+
+        # Add a key to one standard role.
+        if delegate is not None:
+            helpers.add_key(targets, delegator, delegate, key.public)
+            keyring.store_key(delegate, key)
+
+        # Add a key to succinct hash bin delegations.
+        else:
+            if targets.delegations is None or targets.delegations.succinct_roles is None:
+                raise ClickException(
+                    "'ROLE' doesn't contain information about succinct delegations"
+                )
+
+            helpers.add_key(targets, delegator, None, key.public)
+
+            for bin_name in targets.delegations.succinct_roles.get_roles():
+                ctx.obj.keyring.store_key(bin_name, key)
 
 
 @edit.command()
