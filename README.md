@@ -64,7 +64,7 @@ A specific role can be edited with following edit-subcommands:
 | `init`              | Create new metadata for role
 | `add-delegation`    | Delegate from role to another role
 | `remove-delegation` | Remove delegation to another role
-| `add-key`           | Add new signing key for a delegated role
+| `add-key`           | Add a new signing key for a delegated role or succinct delegation.
 | `remove-key`        | Remove signing key for a delegated role
 | `set-threshold`     | Set the threshold of delegated role
 | `set-expiry`        | Set expiry period for the role
@@ -153,7 +153,10 @@ while helps keep track of changes so far.
     # Add delegation to 16 roles named "bin-0" to "bin-f" to role1 (sign with role1 key)
     tufrepo edit role1 add-delegation --succinct 16 bin
 
-    # Create the 16 roles, add shared succinct role key(s), sign with that key
+    # Add a key shared between all 16 succinct delegations defined in role1
+    tufrepo edit role1 add-key
+
+    # Create the 16 roles and sign them with the shared key
     tufrepo init-succinct-roles role1
 
     # Update snapshot/timestamp contents (sign with snapshot/timestamp keys)

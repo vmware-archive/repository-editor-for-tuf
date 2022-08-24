@@ -287,6 +287,9 @@ class TestCLI(unittest.TestCase):
         files.add("4.targets.json")
         self.assertEqual(set(os.listdir(self.cwd)), files)
 
+        # Add a new key that will be used for succinct hash bin delegation.
+        self._run("edit targets add-key")
+
         # Initialize delegated bin files based on the info in targets.
         self._run("init-succinct-roles targets")
 
@@ -382,6 +385,14 @@ class TestCLI(unittest.TestCase):
             "edit targets add-delegation delegate",
             "",
             "Error: Either paths/hash_prefix options must be set or succinct option\n"
+        )
+
+        # Trying to add a key for delegated bins in a target file without
+        # succinct hash delegation.
+        self._run(
+            "edit targets add-key",
+            "",
+            "Error: 'ROLE' doesn't contain information about succinct delegations\n"
         )
 
 if __name__ == '__main__':
