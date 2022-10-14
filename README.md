@@ -1,4 +1,3 @@
-
 # Repository Editor for TUF
 
 ## Overview
