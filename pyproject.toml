@@ -28,7 +28,7 @@ dependencies = [
 ]
 
 [project.scripts]
-tufrepo = "tufrepo.cli:cli"
+tufrepo = "tufrepo.__main__:cli"
 
 [tool.setuptools]
 include-package-data = false
