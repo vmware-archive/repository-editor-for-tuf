@@ -423,3 +423,6 @@ def remove_delegation(
     with ctx.obj.repo.edit(ctx.obj.role) as tar:
         if tar.delegations is not None and tar.delegations.roles is not None:
             del tar.delegations.roles[delegate]
+
+if __name__ == "__main__":
+    cli()
