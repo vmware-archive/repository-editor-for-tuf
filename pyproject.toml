@@ -1,5 +1,40 @@
 [build-system]
-requires = ["setuptools>=42.2", "setuptools_scm[toml]>=3.4.3"]
+requires = ["setuptools>=61.2.0", "setuptools_scm[toml]>=3.4.3"]
 build-backend = "setuptools.build_meta"
 
+[project]
+name = "tufrepo"
+readme = "README.md"
+description = "Command line tool for editing and maintaining a TUF repository"
+authors = [{name = "KOLANICH"}]
+classifiers = [
+	"Development Status :: 4 - Beta",
+	"Environment :: Other Environment",
+	"Intended Audience :: Developers",
+	"License :: Public Domain",
+	"Operating System :: OS Independent",
+	"Programming Language :: Python",
+	"Programming Language :: Python :: 3",
+	"Programming Language :: Python :: 3 :: Only",
+	"Topic :: Software Development :: Libraries :: Python Modules",
+]
+keywords = ["tuf"]
+license = {text = "Apache-2.0 AND MIT"}
+dynamic = ["version"]
+dependencies = [
+    "Click",
+    "securesystemslib[pynacl]",
+    "tuf>=2.0.0",
+]
+
+[project.scripts]
+tufrepo = "tufrepo.cli:cli"
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.packages.find]
+include = ["tufrepo", "tufrepo.*"]
+
 [tool.setuptools_scm]
+
