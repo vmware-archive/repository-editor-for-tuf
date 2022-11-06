@@ -395,5 +395,63 @@ class TestCLI(unittest.TestCase):
             "Error: 'ROLE' doesn't contain information about succinct delegations\n"
         )
 
+    def test_sign(self):
+        """Test making changes without key, then signing with key"""
+        subprocess.run(["git", "init", "."], cwd=self.cwd, capture_output=True)
+        subprocess.run(["git", "config", "--local", "user.name", "test"], cwd=self.cwd)
+        subprocess.run(["git", "config", "--local", "user.email", "test@example.com"], cwd=self.cwd)
+
+        # Create initial metadata
+        self._run("init")
+        proc = self._run("verify", expected_out=None)
+        subprocess.run(["git", "commit", "-a", "-m", "Initial metadata"], cwd=self.cwd, capture_output=True)
+
+        files = {".git", "1.root.json", "1.snapshot.json", "1.targets.json", "privkeys.json", "timestamp.json"}
+        self.assertEqual(set(os.listdir(self.cwd)), files)
+
+    	# bump root version without keys available
+        os.rename(f"{self.cwd}/privkeys.json", f"{self.cwd}/test_backup_keys.json")
+        self._run("edit root touch")
+        subprocess.run(["git", "commit", "-a", "-m", "Change without keys"], cwd=self.cwd, capture_output=True)
+        os.rename(f"{self.cwd}/test_backup_keys.json", f"{self.cwd}/privkeys.json")
+
+        files |= {"2.root.json"}
+        self.assertEqual(set(os.listdir(self.cwd)), files)
+        proc = self._run("verify", expected_err="Error: Top-level metadata fails to validate: root was signed by 0/1 keys\n")
+
+        # sign the change with keys available
+        self._run("sign root")
+        subprocess.run(["git", "commit", "-a", "-m", "Sign change"], cwd=self.cwd, capture_output=True)
+
+        self.assertEqual(set(os.listdir(self.cwd)), files)
+        proc = self._run("verify", expected_out=None)
+        self.assertStartsWith(proc.stdout, "Metadata with 0 delegated targets verified")
+
+        # bump targets version without keys available
+        os.rename(f"{self.cwd}/privkeys.json", f"{self.cwd}/test_backup_keys.json")
+        self._run("edit targets touch")
+        subprocess.run(["git", "commit", "-a", "-m", "Change without keys"], cwd=self.cwd, capture_output=True)
+        os.rename(f"{self.cwd}/test_backup_keys.json", f"{self.cwd}/privkeys.json")
+
+        files |= {"2.targets.json"}
+        self.assertEqual(set(os.listdir(self.cwd)), files)
+        proc = self._run("verify", expected_out=None)
+
+        # sign all targets with keys available
+        self._run("sign --all-targets")
+        subprocess.run(["git", "commit", "-a", "-m", "Sign change"], cwd=self.cwd, capture_output=True)
+
+        self.assertEqual(set(os.listdir(self.cwd)), files)
+
+        # Update snapshot to include new targets
+        self._run("snapshot")
+
+        files -= {"1.snapshot.json", "1.targets.json"}
+        files |= {"2.snapshot.json"}
+        self.assertEqual(set(os.listdir(self.cwd)), files)
+
+        proc = self._run("verify", expected_out=None)
+        self.assertStartsWith(proc.stdout, "Metadata with 0 delegated targets verified")
+
 if __name__ == '__main__':
     unittest.main()
