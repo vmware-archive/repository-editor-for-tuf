@@ -103,7 +103,7 @@ def sign(ctx: Context, all_targets: bool, roles: Tuple[str]):
     in the keyring"""
     if all_targets:
         skip = ["root", "timestamp", "snapshot"]
-        roles = [r for r in ctx.obj.repo.keyring if r not in skip]
+        roles = [r for r in ctx.obj.keyring if r not in skip]
     for role in roles:
         ctx.obj.repo.sign(role)
 
