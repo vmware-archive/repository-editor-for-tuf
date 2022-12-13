@@ -90,10 +90,9 @@ class GitMetadata(MetadataDescriptor):
 
     def _sign_role(self):
         try:
-            for key in self._keyring[self._role]:
-                keyid = key.public.keyid
-                logger.info("Signing role %s with key %s", self._role, keyid[:7])
-                self._md.sign(key.signer, append=True)
+            for signer in self._keyring[self._role]:
+                logger.info("Signing role %s", self._role)
+                self._md.sign(signer, append=True)
         except KeyError:
             logger.info(f"No keys for role %s found in keyring", self._role)
 

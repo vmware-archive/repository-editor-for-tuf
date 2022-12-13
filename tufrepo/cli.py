@@ -12,6 +12,7 @@ from typing import Optional, List, Tuple
 from tuf.api.metadata import(
     DelegatedRole,
     Delegations,
+    Key,
     SuccinctRoles,
     Targets
 )
@@ -20,7 +21,7 @@ from tufrepo import helpers
 from tufrepo import verifier
 from tufrepo.librepo.keys import Keyring
 from tufrepo.git_repo import GitRepository
-from tufrepo.keys_impl import EnvVarKeyring, InsecureFileKeyring, PrivateKey
+from tufrepo.keys_impl import EnvVarKeyring, InsecureFileKeyring
 
 logger = logging.getLogger("tufrepo")
 
@@ -82,9 +83,9 @@ def init(ctx: Context):
     with ctx.obj.repo.edit("root", init=True) as root:
         root.unrecognized_fields["x-tufrepo-expiry-period"] = period
         for role in ["root", "timestamp", "snapshot", "targets"]:
-            key: PrivateKey = ctx.obj.keyring.generate_key()
-            root.add_key(key.public, role)
-            ctx.obj.keyring.store_key(role, key)
+            # NOTE: we expect this to be run with InsecureFileKeyring
+            key: Key = ctx.obj.keyring.generate_key(role)
+            root.add_key(key, role)
 
     for role in ["timestamp", "snapshot", "targets"]:
         with ctx.obj.repo.edit(role, init=True) as signed:
@@ -292,15 +293,14 @@ def add_key(ctx: Context, delegate: Optional[str]):
     The private key secret will be written to privkeys.json."""
     delegator = ctx.obj.role
     keyring: InsecureFileKeyring = ctx.obj.keyring
-    key = keyring.generate_key()
 
     targets: Targets
     with ctx.obj.repo.edit(delegator) as targets:
 
         # Add a key to one standard role.
         if delegate is not None:
-            helpers.add_key(targets, delegator, delegate, key.public)
-            keyring.store_key(delegate, key)
+            key = keyring.generate_key(delegate)
+            helpers.add_key(targets, delegator, delegate, key)
 
         # Add a key to succinct hash bin delegations.
         else:
@@ -309,10 +309,8 @@ def add_key(ctx: Context, delegate: Optional[str]):
                     "'ROLE' doesn't contain information about succinct delegations"
                 )
 
-            helpers.add_key(targets, delegator, None, key.public)
-
-            for bin_name in targets.delegations.succinct_roles.get_roles():
-                ctx.obj.keyring.store_key(bin_name, key)
+            key = keyring.generate_succinct_key(targets.delegations.succinct_roles)
+            helpers.add_key(targets, delegator, None, key)
 
 
 @edit.command()

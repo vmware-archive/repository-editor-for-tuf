@@ -2,26 +2,27 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 import abc
+import copy
 import glob
 import json
 import logging
 import os
 
 from securesystemslib.keys import generate_ed25519_key
+from securesystemslib.signer import SSlibSigner, Signer
 from tuf.api.metadata import (
     Key,
     Metadata,
     Root,
     Targets,
+    SuccinctRoles,
 )
 from typing import DefaultDict, Dict, Set
-
-from tufrepo.librepo.keys import PrivateKey
 
 logger = logging.getLogger("tufrepo")
 
 
-class Keyring(DefaultDict[str, Set[PrivateKey]], metaclass=abc.ABCMeta):
+class Keyring(DefaultDict[str, Set[Signer]], metaclass=abc.ABCMeta):
     """A base class for the private keyring management implementations."""
 
     def __init__(self):
@@ -30,13 +31,13 @@ class Keyring(DefaultDict[str, Set[PrivateKey]], metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def _load_key(self, rolename: str, key: Key) -> None:
-        """Load the private key of a given role and add it to the "key" object."""
+        """Load signer for given role into keyring"""
         raise NotImplementedError
 
     def _load_private_keys(self):
         """Loads secrets for all delegating roles in this repository by using
         self._load_key(). This currently loads all delegating metadata to
-        findthe public keys."""
+        find the public keys."""
 
         # find all delegating roles in the repository
         roles: Dict[str, int] = {}
@@ -80,10 +81,13 @@ class InsecureFileKeyring(Keyring):
     """
 
     def _load_key(self, rolename: str, key: Key):
-        # Load a private key from env var or the private key file
+        # Load a private key from the insecure private key file
         private = self._privkeyfile.get(key.keyid)
         if private:
-            self[rolename].add(PrivateKey(key, private))
+            keydict = copy.deepcopy(key.to_securesystemslib_key())
+            keydict["keyval"]["private"] = private
+            self[rolename].add(SSlibSigner(keydict))
+
 
     def __init__(self) -> None:
         # defaultdict with an empy set as initial value
@@ -98,34 +102,52 @@ class InsecureFileKeyring(Keyring):
         super().__init__()
         logger.info("Loaded keys for %d roles from privkeys.json", len(self))
 
-    def generate_key(self) -> PrivateKey:
-        "Generate a private key"
+    def generate_key(self, role: str) -> Key:
+        "Generate a private key, store in keychain and privkeys.json"
         keydict = generate_ed25519_key()
         del keydict["keyid_hash_algorithms"]
-        private = keydict["keyval"].pop("private")
-        return PrivateKey(Key.from_dict(keydict["keyid"], keydict), private)
-
-    def store_key(self, role: str, key: PrivateKey) -> None:
-        "Write private key to privkeys.json"
+        private = keydict["keyval"]["private"]
+        key = Key.from_securesystemslib_key(keydict)
 
         # Add new key to keyring
-        self[role].add(key)
+        self[role].add(SSlibSigner(keydict))
 
         # write private key to privkeys file
-        try:
-            with open("privkeys.json", "r") as f:
-                privkeyfile: Dict[str, str] = json.loads(f.read())
-        except FileNotFoundError:
-            privkeyfile = {}
-        privkeyfile[key.public.keyid] = key.private
+        self._privkeyfile[key.keyid] = private
         with open("privkeys.json", "w") as f:
-            f.write(json.dumps(privkeyfile, indent=2))
+            f.write(json.dumps(self._privkeyfile, indent=2))
 
         logger.info(
             "Added key %s for role %s to keyring",
-            key.public.keyid[:7],
+            key.keyid[:7],
             role,
         )
+
+        return key
+
+    def generate_succinct_key(self, succinct_roles: SuccinctRoles) -> Key:
+        "Generate a private key, store in keychain and privkeys.json"
+        keydict = generate_ed25519_key()
+        del keydict["keyid_hash_algorithms"]
+        private = keydict["keyval"].pop("private")
+        key = Key.from_securesystemslib_key(keydict)
+        signer = SSlibSigner(keydict)
+
+        # Add new key to keyring
+        # write private key to privkeys file
+        for bin_name in succinct_roles.get_roles():
+            self[bin_name].add(signer)
+            self._privkeyfile[key.keyid] = private
+
+        with open("privkeys.json", "w") as f:
+            f.write(json.dumps(self._privkeyfile, indent=2))
+
+        logger.info(
+            "Added key %s for succinct roles %s to keyring",
+            key.keyid[:7],
+            succinct_roles.name_prefix,
+        )
+        return key
 
 class EnvVarKeyring(Keyring):
     """Private key management using environment variables
@@ -139,7 +161,9 @@ class EnvVarKeyring(Keyring):
         # Load a private key from env var or the private key file
         private = os.getenv(f"TUF_REPO_PRIVATE_KEY_{key.keyid}")
         if private:
-            self[rolename].add(PrivateKey(key, private))
+            keydict = copy.deepcopy(key.to_securesystemslib_key())
+            keydict["keyval"]["private"] = private
+            self[rolename].add(SSlibSigner(keydict))
 
     def __init__(self) -> None:
         # defaultdict with an empy set as initial value
