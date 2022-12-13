@@ -27,7 +27,7 @@ from tuf.api.metadata import (
 from tuf.api.serialization.json import JSONSerializer
 
 from tufrepo.librepo.repo import MetadataDescriptor, Repository
-from tufrepo.librepo.keys import Keyring
+from tufrepo.keys_impl import Keyring
 
 logger = logging.getLogger("tufrepo")
 

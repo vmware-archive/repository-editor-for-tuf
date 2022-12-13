@@ -392,7 +392,7 @@ class TestCLI(unittest.TestCase):
         self._run(
             "edit targets add-key",
             "",
-            "Error: 'ROLE' doesn't contain information about succinct delegations\n"
+            "Error: No succinct delegations in ROLE\n"
         )
 
     def test_sign(self):

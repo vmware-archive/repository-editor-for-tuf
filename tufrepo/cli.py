@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Optional, List, Tuple
 
+from securesystemslib.signer import GCPSigner
+
 from tuf.api.metadata import(
     DelegatedRole,
     Delegations,
@@ -19,9 +21,8 @@ from tuf.api.metadata import(
 
 from tufrepo import helpers
 from tufrepo import verifier
-from tufrepo.librepo.keys import Keyring
 from tufrepo.git_repo import GitRepository
-from tufrepo.keys_impl import EnvVarKeyring, InsecureFileKeyring
+from tufrepo.keys_impl import EnvVarKeyring, InsecureFileKeyring, Keyring, URIKeyring
 
 logger = logging.getLogger("tufrepo")
 
@@ -49,16 +50,16 @@ class Context(click.Context):
 @click.group()
 @click.pass_context
 @click.option("-v", "--verbose", count=True, default=0)
-@click.option("--keyring", type=click.Choice(["file", "env"]), default="file")
+@click.option("--keyring", type=click.Choice(["file", "env", "uri"]), default="file")
 def cli(ctx: Context, verbose: int, keyring: str):
     """Edit and sign TUF repository metadata
 
     This tool expects to be run in a directory with TUF metadata that is within
     a git repository.
 
-    By default private keys are read in plaintext fom privkeys.json: this can
-    be changed with "--keyring" to use environment variables named
-    TUF_REPO_PRIVATE_KEY_<keyid> (useful in automation, like running in CI).
+    By default private keys are read in plaintext fom privkeys.json:
+    This can be changed to use environment variables or embedded URIs when
+    running on CI).
     """
 
     logging.basicConfig(format="%(levelname)s:%(message)s")
@@ -66,6 +67,8 @@ def cli(ctx: Context, verbose: int, keyring: str):
 
     if keyring == "env":
         ctx.obj = AppData(EnvVarKeyring())
+    elif keyring == "uri":
+        ctx.obj = AppData(URIKeyring())
     else:
         ctx.obj = AppData(InsecureFileKeyring())
 
@@ -279,8 +282,9 @@ def set_expiry(ctx: Context, expiry: Tuple[int, str]):
 
 @edit.command()
 @click.pass_context
+@click.option("--gcp", help="Google Cloud key id")
 @click.argument("delegate", required=False)
-def add_key(ctx: Context, delegate: Optional[str]):
+def add_key(ctx: Context, gcp: Optional[str], delegate: Optional[str]):
     """Add a new signing key for a delegated role or succinct hash bin
     delegations.
 
@@ -290,27 +294,30 @@ def add_key(ctx: Context, delegate: Optional[str]):
     If DELEGATE argument is not provided tufrepo will assume you want to add
     the new key to succinct hash bin delegation.
 
-    The private key secret will be written to privkeys.json."""
+    This method assumes that file keyring is in use (without --gcp the
+    private keys are stored insecurely in privkeys.json)
+    """
     delegator = ctx.obj.role
     keyring: InsecureFileKeyring = ctx.obj.keyring
 
     targets: Targets
     with ctx.obj.repo.edit(delegator) as targets:
 
-        # Add a key to one standard role.
-        if delegate is not None:
-            key = keyring.generate_key(delegate)
-            helpers.add_key(targets, delegator, delegate, key)
-
-        # Add a key to succinct hash bin delegations.
+        if gcp:
+            # embed GCP URI in key metadata
+            uri, key = GCPSigner.import_(gcp)
+            key.unrecognized_fields["x-tufrepo-online-uri"] = uri
         else:
-            if targets.delegations is None or targets.delegations.succinct_roles is None:
-                raise ClickException(
-                    "'ROLE' doesn't contain information about succinct delegations"
-                )
+            # Create and store private key
+            if delegate is not None:
+                key = keyring.generate_key(delegate)
+            else:
+                if targets.delegations is None or targets.delegations.succinct_roles is None:
+                    raise ClickException("No succinct delegations in ROLE")
+                key = keyring.generate_succinct_key(targets.delegations.succinct_roles)
 
-            key = keyring.generate_succinct_key(targets.delegations.succinct_roles)
-            helpers.add_key(targets, delegator, None, key)
+        # insert the public key into metadata
+        helpers.add_key(targets, delegator, delegate, key)
 
 
 @edit.command()

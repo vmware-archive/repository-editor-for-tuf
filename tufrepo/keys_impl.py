@@ -169,3 +169,23 @@ class EnvVarKeyring(Keyring):
         # defaultdict with an empy set as initial value
         super().__init__()
         logger.info("Loaded keys for %d roles from env vars", len(self))
+
+
+class URIKeyring(Keyring):
+    """Private key management using embedded private key URIs
+
+    Use signers for all keys that have a custom "x-tufrepo-online-uri" field.
+    This currently loads all delegating metadata to find the public keys.
+    """
+
+    def _load_key(self, rolename: str, key: Key):
+        # Use the URI from key metadata
+        uri = key.unrecognized_fields.get("x-tufrepo-online-uri")
+        if uri:
+            signer = Signer.from_priv_key_uri(uri, key)
+            self[rolename].add(signer)
+
+    def __init__(self) -> None:
+        # defaultdict with an empy set as initial value
+        super().__init__()
+        logger.info("Loaded keys for %d roles from env vars", len(self))
