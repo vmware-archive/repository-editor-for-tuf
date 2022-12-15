@@ -94,10 +94,10 @@ class InsecureFileKeyring(Keyring):
 
             print("Importing old privkeys.json key format...")
             self._privkeyfile = {}
-            for keyid, secret in privkeys:
+            for keyid, secret in privkeys.items():
                 with open(f"private_keys/{keyid}", "w") as secfile:
                     secfile.write(secret)
-                self._privkeyfile[keyid] = f"file:private_keys/{keyid}?encrypted=False"
+                self._privkeyfile[keyid] = f"file:private_keys/{keyid}?encrypted=false"
             with open(f"private_keys/keys.json", "w") as keysfile:
                 keysfile.write(json.dumps(self._privkeyfile, indent=2))
 
