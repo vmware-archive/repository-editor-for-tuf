@@ -9,15 +9,14 @@ import logging
 import os
 
 from securesystemslib.keys import generate_ed25519_key
-from securesystemslib.signer import SSlibSigner, Signer
+from securesystemslib.signer import SSlibKey, SSlibSigner, Signer
 from tuf.api.metadata import (
     Key,
     Metadata,
     Root,
     Targets,
-    SuccinctRoles,
 )
-from typing import DefaultDict, Dict, Set
+from typing import DefaultDict, Dict, Set, Tuple
 
 logger = logging.getLogger("tufrepo")
 
@@ -77,77 +76,72 @@ class InsecureFileKeyring(Keyring):
     in this repository. This currently loads all delegating metadata to find
     the public keys.
 
-    Supports writing secrets to disk with store_key().
+    Supports writing secrets to disk.
     """
 
     def _load_key(self, rolename: str, key: Key):
         # Load a private key from the insecure private key file
-        private = self._privkeyfile.get(key.keyid)
-        if private:
-            keydict = copy.deepcopy(key.to_securesystemslib_key())
-            keydict["keyval"]["private"] = private
-            self[rolename].add(SSlibSigner(keydict))
-
+        uri = self._privkeyfile.get(key.keyid)
+        self[rolename].add(Signer.from_priv_key_uri(uri, key))
 
     def __init__(self) -> None:
-        # defaultdict with an empy set as initial value
+        os.makedirs("private_keys", exist_ok=True)
         try:
+            # import old key format
             with open("privkeys.json", "r") as f:
-                self._privkeyfile: Dict[str, str] = json.loads(f.read())
-        except json.JSONDecodeError as e:
-            raise RuntimeError("Failed to read privkeys.json")
-        except FileNotFoundError:
+                privkeys = json.loads(f.read())
+
+            print("Importing old privkeys.json key format...")
             self._privkeyfile = {}
+            for keyid, secret in privkeys:
+                with open(f"private_keys/{keyid}", "w") as secfile:
+                    secfile.write(secret)
+                self._privkeyfile[keyid] = f"file:private_keys/{keyid}?encrypted=False"
+            with open(f"keys.json", "w") as keysfile:
+                keysfile.write(json.dumps(self._privkeyfile, indent=2))
+
+            os.remove("privkeys.json")
+            print("Private keys now in private_keys/, config in keys.json")
+        except json.JSONDecodeError as e:
+            raise RuntimeError("Failed to read old privkeys.json")
+        except FileNotFoundError:
+            # import not needed: open current keys.json
+            try:
+                with open("keys.json", "r") as f:
+                    self._privkeyfile: Dict[str, str] = json.loads(f.read())
+            except json.JSONDecodeError as e:
+                raise RuntimeError("Failed to read privkeys.json")
+            except FileNotFoundError:
+                self._privkeyfile = {}
 
         super().__init__()
         logger.info("Loaded keys for %d roles from privkeys.json", len(self))
 
-    def generate_key(self, role: str) -> Key:
-        "Generate a private key, store in keychain and privkeys.json"
+    @staticmethod
+    def generate_key() -> Tuple[str, Key]:
+        "Generate a key, store private key material in a file"
         keydict = generate_ed25519_key()
         del keydict["keyid_hash_algorithms"]
         private = keydict["keyval"]["private"]
-        key = Key.from_securesystemslib_key(keydict)
 
-        # Add new key to keyring
-        self[role].add(SSlibSigner(keydict))
+        key = SSlibKey.from_securesystemslib_key(keydict)
+        uri = f"file:private_keys/{key.keyid}?encrypted=false"
 
-        # write private key to privkeys file
-        self._privkeyfile[key.keyid] = private
-        with open("privkeys.json", "w") as f:
-            f.write(json.dumps(self._privkeyfile, indent=2))
+        # write private key to private_keys/
+        with open(f"private_keys/{key.keyid}", "w") as secfile:
+            secfile.write(private)
+        return uri, key
 
-        logger.info(
-            "Added key %s for role %s to keyring",
-            key.keyid[:7],
-            role,
-        )
+    def add_signer(self, role, uri, key):
+        # update keys.json
+        self._privkeyfile[key.keyid] = uri
+        with open(f"keys.json", "w") as keysfile:
+            keysfile.write(json.dumps(self._privkeyfile, indent=2))
 
-        return key
+        # update keyring itself
+        assert(isinstance(key, SSlibKey))
+        self[role].add(Signer.from_priv_key_uri(uri, key))
 
-    def generate_succinct_key(self, succinct_roles: SuccinctRoles) -> Key:
-        "Generate a private key, store in keychain and privkeys.json"
-        keydict = generate_ed25519_key()
-        del keydict["keyid_hash_algorithms"]
-        private = keydict["keyval"].pop("private")
-        key = Key.from_securesystemslib_key(keydict)
-        signer = SSlibSigner(keydict)
-
-        # Add new key to keyring
-        # write private key to privkeys file
-        for bin_name in succinct_roles.get_roles():
-            self[bin_name].add(signer)
-            self._privkeyfile[key.keyid] = private
-
-        with open("privkeys.json", "w") as f:
-            f.write(json.dumps(self._privkeyfile, indent=2))
-
-        logger.info(
-            "Added key %s for succinct roles %s to keyring",
-            key.keyid[:7],
-            succinct_roles.name_prefix,
-        )
-        return key
 
 class EnvVarKeyring(Keyring):
     """Private key management using environment variables

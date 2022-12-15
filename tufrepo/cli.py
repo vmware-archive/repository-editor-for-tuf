@@ -87,7 +87,8 @@ def init(ctx: Context):
         root.unrecognized_fields["x-tufrepo-expiry-period"] = period
         for role in ["root", "timestamp", "snapshot", "targets"]:
             # NOTE: we expect this to be run with InsecureFileKeyring
-            key: Key = ctx.obj.keyring.generate_key(role)
+            uri, key = ctx.obj.keyring.generate_key()
+            ctx.obj.keyring.add_signer(role, uri, key)
             root.add_key(key, role)
 
     for role in ["timestamp", "snapshot", "targets"]:
@@ -309,12 +310,14 @@ def add_key(ctx: Context, gcp: Optional[str], delegate: Optional[str]):
             key.unrecognized_fields["x-tufrepo-online-uri"] = uri
         else:
             # Create and store private key
+            uri, key = keyring.generate_key()
             if delegate is not None:
-                key = keyring.generate_key(delegate)
+                keyring.add_signer(delegate, uri, key)
             else:
                 if targets.delegations is None or targets.delegations.succinct_roles is None:
                     raise ClickException("No succinct delegations in ROLE")
-                key = keyring.generate_succinct_key(targets.delegations.succinct_roles)
+                for bin_name in targets.delegations.succinct_roles.get_roles():
+                    keyring.add_signer(bin_name, uri, key)
 
         # insert the public key into metadata
         helpers.add_key(targets, delegator, delegate, key)
