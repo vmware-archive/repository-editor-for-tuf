@@ -95,7 +95,7 @@ class TestCLI(unittest.TestCase):
 
         self.assertIn("Metadata with 0 delegated targets verified", proc.stdout)
         self.assertIn("Keyring contains keys for [root, snapshot, targets, timestamp]", proc.stdout)
-        files = {".git", "1.root.json", "1.snapshot.json", "1.targets.json", "privkeys.json", "timestamp.json"}
+        files = {".git", "1.root.json", "1.snapshot.json", "1.targets.json", "private_keys", "timestamp.json"}
         self.assertEqual(set(os.listdir(self.cwd)), files)
 
     def test_repo_management(self):
@@ -111,7 +111,7 @@ class TestCLI(unittest.TestCase):
 
         self.assertIn("Metadata with 0 delegated targets verified", proc.stdout)
         self.assertIn("Keyring contains keys for [root, snapshot, targets, timestamp]", proc.stdout)
-        files = {".git", "1.root.json", "1.snapshot.json", "1.targets.json", "privkeys.json", "timestamp.json"}
+        files = {".git", "1.root.json", "1.snapshot.json", "1.targets.json", "private_keys", "timestamp.json"}
         self.assertEqual(set(os.listdir(self.cwd)), files)
 
         self._run("edit root add-key root")
@@ -230,7 +230,7 @@ class TestCLI(unittest.TestCase):
 
         self.assertIn("Metadata with 0 delegated targets verified", proc.stdout)
         self.assertIn("Keyring contains keys for [root, snapshot, targets, timestamp]", proc.stdout)
-        files = {".git", "1.root.json", "1.snapshot.json", "1.targets.json", "privkeys.json", "timestamp.json"}
+        files = {".git", "1.root.json", "1.snapshot.json", "1.targets.json", "private_keys", "timestamp.json"}
         self.assertEqual(set(os.listdir(self.cwd)), files)
 
         # Add new role, delegate to role
@@ -406,14 +406,14 @@ class TestCLI(unittest.TestCase):
         proc = self._run("verify", expected_out=None)
         subprocess.run(["git", "commit", "-a", "-m", "Initial metadata"], cwd=self.cwd, capture_output=True)
 
-        files = {".git", "1.root.json", "1.snapshot.json", "1.targets.json", "privkeys.json", "timestamp.json"}
+        files = {".git", "1.root.json", "1.snapshot.json", "1.targets.json", "private_keys", "timestamp.json"}
         self.assertEqual(set(os.listdir(self.cwd)), files)
 
     	# bump root version without keys available
-        os.rename(f"{self.cwd}/privkeys.json", f"{self.cwd}/test_backup_keys.json")
+        os.rename(f"{self.cwd}/private_keys/keys.json", f"{self.cwd}/test_backup_keys.json")
         self._run("edit root touch")
         subprocess.run(["git", "commit", "-a", "-m", "Change without keys"], cwd=self.cwd, capture_output=True)
-        os.rename(f"{self.cwd}/test_backup_keys.json", f"{self.cwd}/privkeys.json")
+        os.rename(f"{self.cwd}/test_backup_keys.json", f"{self.cwd}/private_keys/keys.json")
 
         files |= {"2.root.json"}
         self.assertEqual(set(os.listdir(self.cwd)), files)
@@ -428,10 +428,10 @@ class TestCLI(unittest.TestCase):
         self.assertStartsWith(proc.stdout, "Metadata with 0 delegated targets verified")
 
         # bump targets version without keys available
-        os.rename(f"{self.cwd}/privkeys.json", f"{self.cwd}/test_backup_keys.json")
+        os.rename(f"{self.cwd}/private_keys/keys.json", f"{self.cwd}/test_backup_keys.json")
         self._run("edit targets touch")
         subprocess.run(["git", "commit", "-a", "-m", "Change without keys"], cwd=self.cwd, capture_output=True)
-        os.rename(f"{self.cwd}/test_backup_keys.json", f"{self.cwd}/privkeys.json")
+        os.rename(f"{self.cwd}/test_backup_keys.json", f"{self.cwd}/private_keys/keys.json")
 
         files |= {"2.targets.json"}
         self.assertEqual(set(os.listdir(self.cwd)), files)

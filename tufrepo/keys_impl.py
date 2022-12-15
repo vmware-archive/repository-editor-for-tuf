@@ -72,7 +72,7 @@ class Keyring(DefaultDict[str, Set[Signer]], metaclass=abc.ABCMeta):
 class InsecureFileKeyring(Keyring):
     """Private key management in plain text file
 
-    loads secrets from plain text privkeys.json file for all delegating roles
+    loads secrets from plain text keys.json file for all delegating roles
     in this repository. This currently loads all delegating metadata to find
     the public keys.
 
@@ -82,7 +82,8 @@ class InsecureFileKeyring(Keyring):
     def _load_key(self, rolename: str, key: Key):
         # Load a private key from the insecure private key file
         uri = self._privkeyfile.get(key.keyid)
-        self[rolename].add(Signer.from_priv_key_uri(uri, key))
+        if uri:
+            self[rolename].add(Signer.from_priv_key_uri(uri, key))
 
     def __init__(self) -> None:
         os.makedirs("private_keys", exist_ok=True)
@@ -97,25 +98,25 @@ class InsecureFileKeyring(Keyring):
                 with open(f"private_keys/{keyid}", "w") as secfile:
                     secfile.write(secret)
                 self._privkeyfile[keyid] = f"file:private_keys/{keyid}?encrypted=False"
-            with open(f"keys.json", "w") as keysfile:
+            with open(f"private_keys/keys.json", "w") as keysfile:
                 keysfile.write(json.dumps(self._privkeyfile, indent=2))
 
             os.remove("privkeys.json")
-            print("Private keys now in private_keys/, config in keys.json")
+            print("Private keys now in private_keys/")
         except json.JSONDecodeError as e:
             raise RuntimeError("Failed to read old privkeys.json")
         except FileNotFoundError:
             # import not needed: open current keys.json
             try:
-                with open("keys.json", "r") as f:
+                with open("private_keys/keys.json", "r") as f:
                     self._privkeyfile: Dict[str, str] = json.loads(f.read())
             except json.JSONDecodeError as e:
-                raise RuntimeError("Failed to read privkeys.json")
+                raise RuntimeError("Failed to read private_keys/keys.json")
             except FileNotFoundError:
                 self._privkeyfile = {}
 
         super().__init__()
-        logger.info("Loaded keys for %d roles from privkeys.json", len(self))
+        logger.info("Loaded keys for %d roles from private_keys/keys.json", len(self))
 
     @staticmethod
     def generate_key() -> Tuple[str, Key]:
@@ -135,7 +136,7 @@ class InsecureFileKeyring(Keyring):
     def add_signer(self, role, uri, key):
         # update keys.json
         self._privkeyfile[key.keyid] = uri
-        with open(f"keys.json", "w") as keysfile:
+        with open(f"private_keys/keys.json", "w") as keysfile:
             keysfile.write(json.dumps(self._privkeyfile, indent=2))
 
         # update keyring itself
