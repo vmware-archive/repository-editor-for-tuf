@@ -144,28 +144,6 @@ class InsecureFileKeyring(Keyring):
         self[role].add(Signer.from_priv_key_uri(uri, key))
 
 
-class EnvVarKeyring(Keyring):
-    """Private key management using environment variables
-    
-    Load private keys from env variables (TUF_REPO_PRIVATE_KEY_*) for all
-    delegating roles in this repository. This currently loads all delegating
-    metadata to find the public keys.
-    """
-
-    def _load_key(self, rolename: str, key: Key):
-        # Load a private key from env var or the private key file
-        private = os.getenv(f"TUF_REPO_PRIVATE_KEY_{key.keyid}")
-        if private:
-            keydict = copy.deepcopy(key.to_securesystemslib_key())
-            keydict["keyval"]["private"] = private
-            self[rolename].add(SSlibSigner(keydict))
-
-    def __init__(self) -> None:
-        # defaultdict with an empy set as initial value
-        super().__init__()
-        logger.info("Loaded keys for %d roles from env vars", len(self))
-
-
 class URIKeyring(Keyring):
     """Private key management using embedded private key URIs
 
@@ -188,4 +166,4 @@ class URIKeyring(Keyring):
     def __init__(self) -> None:
         # defaultdict with an empy set as initial value
         super().__init__()
-        logger.info("Loaded keys for %d roles from env vars", len(self))
+        logger.info("Loaded keys for %d roles from embedded URIs", len(self))

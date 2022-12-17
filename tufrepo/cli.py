@@ -22,7 +22,7 @@ from tuf.api.metadata import(
 from tufrepo import helpers
 from tufrepo import verifier
 from tufrepo.git_repo import GitRepository
-from tufrepo.keys_impl import EnvVarKeyring, InsecureFileKeyring, Keyring, URIKeyring
+from tufrepo.keys_impl import InsecureFileKeyring, Keyring, URIKeyring
 
 logger = logging.getLogger("tufrepo")
 
@@ -50,24 +50,23 @@ class Context(click.Context):
 @click.group()
 @click.pass_context
 @click.option("-v", "--verbose", count=True, default=0)
-@click.option("--keyring", type=click.Choice(["file", "env", "uri"]), default="file")
+@click.option("--keyring", type=click.Choice(["file", "uri"]), default="file")
 def cli(ctx: Context, verbose: int, keyring: str):
     """Edit and sign TUF repository metadata
 
     This tool expects to be run in a directory with TUF metadata that is within
     a git repository.
 
-    By default private keys are read in plaintext fom privkeys.json:
-    This can be changed to use environment variables or embedded URIs when
-    running on CI).
+    By default signer URIs are looked up in keys.json, a configuration file for
+    a human user. The other alternative, "--keyring uri", means signer URIs are
+    found embedded in key metadata: this is useful in CI as external
+    configuration files are not needed.
     """
 
     logging.basicConfig(format="%(levelname)s:%(message)s")
     logger.setLevel(max(1, 10 * (5 - verbose)))
 
-    if keyring == "env":
-        ctx.obj = AppData(EnvVarKeyring())
-    elif keyring == "uri":
+    if keyring == "uri":
         ctx.obj = AppData(URIKeyring())
     else:
         ctx.obj = AppData(InsecureFileKeyring())
