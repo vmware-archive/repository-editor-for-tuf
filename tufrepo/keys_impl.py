@@ -177,8 +177,13 @@ class URIKeyring(Keyring):
         # Use the URI from key metadata
         uri = key.unrecognized_fields.get("x-tufrepo-online-uri")
         if uri:
-            signer = Signer.from_priv_key_uri(uri, key)
-            self[rolename].add(signer)
+            try:
+                signer = Signer.from_priv_key_uri(uri, key)
+                self[rolename].add(signer)
+            except Exception as e:
+                # We might not have the private key available: it's fine
+                logger.info("Failed to load signer: %s", e)
+                pass
 
     def __init__(self) -> None:
         # defaultdict with an empy set as initial value
