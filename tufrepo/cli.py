@@ -282,9 +282,10 @@ def set_expiry(ctx: Context, expiry: Tuple[int, str]):
 
 @edit.command()
 @click.pass_context
+@click.option("--online", is_flag=True)
 @click.option("--gcp", help="Google Cloud key id")
 @click.argument("delegate", required=False)
-def add_key(ctx: Context, gcp: Optional[str], delegate: Optional[str]):
+def add_key(ctx: Context, online: bool, gcp: Optional[str], delegate: Optional[str]):
     """Add a new signing key for a delegated role or succinct hash bin
     delegations.
 
@@ -294,32 +295,37 @@ def add_key(ctx: Context, gcp: Optional[str], delegate: Optional[str]):
     If DELEGATE argument is not provided tufrepo will assume you want to add
     the new key to succinct hash bin delegation.
 
-    This method assumes that file keyring is in use (without --gcp the
-    private keys are stored insecurely in privkeys.json)
+    By default a new private keys is created in './private_keys/', but with --gcp a
+    Google Cloud key can be used instead.
+
+    --online will embed the signer uri into the key metadata: This is useful
+    for GCP keys currently.
     """
     delegator = ctx.obj.role
     keyring: InsecureFileKeyring = ctx.obj.keyring
 
+    if gcp:
+        uri, key = GCPSigner.import_(gcp)
+    else:
+        # write the private key into a file
+        uri, key = keyring.generate_key()
+
     targets: Targets
     with ctx.obj.repo.edit(delegator) as targets:
 
-        if gcp:
-            # embed GCP URI in key metadata
-            uri, key = GCPSigner.import_(gcp)
+        # insert the public key into metadata
+        helpers.add_key(targets, delegator, delegate, key)
+
+        if online:
+            # embed the private key URI in key metadata
             key.unrecognized_fields["x-tufrepo-online-uri"] = uri
         else:
-            # Create and store private key
-            uri, key = keyring.generate_key()
+            # Store private key URI in the keyring file
             if delegate is not None:
                 keyring.add_signer(delegate, uri, key)
             else:
-                if targets.delegations is None or targets.delegations.succinct_roles is None:
-                    raise ClickException("No succinct delegations in ROLE")
                 for bin_name in targets.delegations.succinct_roles.get_roles():
                     keyring.add_signer(bin_name, uri, key)
-
-        # insert the public key into metadata
-        helpers.add_key(targets, delegator, delegate, key)
 
 
 @edit.command()
