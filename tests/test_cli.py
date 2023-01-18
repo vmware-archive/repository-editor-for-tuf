@@ -45,6 +45,8 @@ class TestCLI(unittest.TestCase):
             self.assertEqual(proc.stderr, expected_err)
             self.assertEqual(proc.returncode, 1)
         else:
+            if proc.returncode != 0:
+                print(proc.stderr)
             self.assertEqual(proc.returncode, 0)
 
         return proc
